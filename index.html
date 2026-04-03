@@ -1,0 +1,1025 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<title>Hammer Time</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap');
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+:root {
+  --bg: #0f0f0f;
+  --surface: #181818;
+  --surface2: #222;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.13);
+  --text: #f0f0f0;
+  --text2: #888;
+  --text3: #3a3a3a;
+  --accent: #f0c040;
+  --accent-dark: #c8a030;
+  --accent-dim: rgba(240,192,64,0.1);
+  --green: #3a9e6a;
+  --danger: #d04444;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  overflow: hidden;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+/* ─── HEADER ─── */
+#header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 11px;
+  border-bottom: 0.5px solid var(--border);
+  flex-shrink: 0;
+}
+#header-left h1 {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: -0.4px;
+}
+#header-location {
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 2px;
+  font-family: 'DM Mono', monospace;
+  transition: color 0.3s;
+}
+#header-location.active { color: var(--text2); }
+#project-pill {
+  font-size: 11px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  border: 0.5px solid var(--border2);
+  color: var(--text2);
+  background: var(--surface2);
+  cursor: pointer;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+#project-pill.active {
+  color: var(--accent);
+  border-color: rgba(240,192,64,0.35);
+  background: var(--accent-dim);
+}
+
+/* ─── FEED ─── */
+#feed {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 14px 14px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  -webkit-overflow-scrolling: touch;
+}
+#feed::-webkit-scrollbar { display: none; }
+
+#empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  padding: 40px 24px;
+}
+#empty .icon { font-size: 44px; margin-bottom: 4px; }
+#empty h2 { font-size: 18px; font-weight: 700; color: var(--accent); }
+#empty p { font-size: 13px; color: var(--text3); line-height: 1.6; max-width: 220px; }
+
+.entry { display: flex; flex-direction: column; gap: 5px; animation: slideUp 0.22s ease; }
+@keyframes slideUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+.entry-photo {
+  width: 100%;
+  border-radius: 14px;
+  border: 0.5px solid var(--border2);
+  overflow: hidden;
+  cursor: pointer;
+  display: block;
+  max-height: 280px;
+  object-fit: cover;
+}
+
+.entry-note {
+  font-size: 13px;
+  color: var(--text);
+  background: var(--surface);
+  border-radius: 11px;
+  padding: 9px 13px;
+  border: 0.5px solid var(--border);
+  line-height: 1.5;
+}
+
+.entry-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 3px;
+}
+.entry-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.5;
+  flex-shrink: 0;
+}
+.entry-meta-text {
+  font-size: 9px;
+  color: var(--text3);
+  font-family: 'DM Mono', monospace;
+}
+
+.confirm-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(58,158,106,0.12);
+  border: 0.5px solid rgba(58,158,106,0.25);
+  border-radius: 20px;
+  padding: 4px 10px;
+  font-size: 10px;
+  color: var(--green);
+  font-family: 'DM Mono', monospace;
+  align-self: flex-start;
+}
+
+/* ─── BOTTOM BAR ─── */
+#bottom-bar {
+  padding: 10px 14px 20px;
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
+  flex-shrink: 0;
+  border-top: 0.5px solid var(--border);
+}
+
+#btn-row {
+  display: flex;
+  gap: 8px;
+}
+
+#btn-camera {
+  flex: 1;
+  height: 58px;
+  background: var(--accent);
+  border: none;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  transition: transform 0.1s, background 0.1s;
+  -webkit-appearance: none;
+}
+#btn-camera:active { transform: scale(0.97); background: var(--accent-dark); }
+#btn-camera svg { width: 20px; height: 20px; flex-shrink: 0; }
+
+#btn-note {
+  width: 58px;
+  height: 58px;
+  background: var(--surface2);
+  border: 0.5px solid var(--border2);
+  border-radius: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s;
+  -webkit-appearance: none;
+}
+#btn-note:active { transform: scale(0.97); }
+#btn-note svg { width: 18px; height: 18px; }
+
+#camera-input { display: none; }
+
+/* ─── TEXT NOTE PANEL ─── */
+#text-panel {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+}
+#text-panel.visible { display: flex; }
+
+#text-input {
+  width: 100%;
+  background: var(--surface2);
+  border: 0.5px solid rgba(240,192,64,0.35);
+  border-radius: 12px;
+  padding: 11px 14px;
+  font-size: 14px;
+  color: var(--text);
+  font-family: inherit;
+  outline: none;
+  resize: none;
+  min-height: 44px;
+  max-height: 120px;
+  -webkit-appearance: none;
+  line-height: 1.5;
+}
+#text-input::placeholder { color: var(--text3); }
+
+#text-actions {
+  display: flex;
+  gap: 8px;
+}
+
+#btn-text-log {
+  flex: 1;
+  height: 48px;
+  background: var(--accent);
+  border: none;
+  border-radius: 13px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #111;
+  cursor: pointer;
+  -webkit-appearance: none;
+}
+#btn-text-log:active { background: var(--accent-dark); }
+
+#btn-text-cancel {
+  width: 48px;
+  height: 48px;
+  background: var(--surface2);
+  border: 0.5px solid var(--border2);
+  border-radius: 13px;
+  font-size: 18px;
+  color: var(--text2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-appearance: none;
+}
+
+/* ─── PHOTO PREVIEW OVERLAY ─── */
+#photo-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 50;
+  flex-direction: column;
+}
+#photo-overlay.visible { display: flex; }
+
+#preview-img-wrap {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+#preview-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+#preview-meta {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding: 16px 18px;
+  background: linear-gradient(to bottom, rgba(0,0,0,0.6) 0%, transparent 100%);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+#preview-meta-text {
+  font-size: 11px;
+  color: rgba(255,255,255,0.7);
+  font-family: 'DM Mono', monospace;
+  line-height: 1.6;
+}
+#btn-preview-discard {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.45);
+  border: 0.5px solid rgba(255,255,255,0.15);
+  color: rgba(255,255,255,0.7);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  -webkit-appearance: none;
+}
+
+#preview-bottom {
+  padding: 12px 14px 20px;
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg);
+}
+
+#preview-note {
+  width: 100%;
+  background: var(--surface2);
+  border: 0.5px solid var(--border2);
+  border-radius: 12px;
+  padding: 11px 14px;
+  font-size: 14px;
+  color: var(--text);
+  font-family: inherit;
+  outline: none;
+  resize: none;
+  min-height: 44px;
+  max-height: 100px;
+  -webkit-appearance: none;
+}
+#preview-note::placeholder { color: var(--text3); }
+
+#preview-actions {
+  display: flex;
+  gap: 8px;
+}
+
+#btn-preview-log {
+  flex: 1;
+  height: 54px;
+  background: var(--accent);
+  border: none;
+  border-radius: 15px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111;
+  cursor: pointer;
+  -webkit-appearance: none;
+  transition: transform 0.1s;
+}
+#btn-preview-log:active { transform: scale(0.98); background: var(--accent-dark); }
+
+#btn-preview-cancel {
+  width: 54px;
+  height: 54px;
+  background: var(--surface2);
+  border: 0.5px solid var(--border2);
+  border-radius: 15px;
+  font-size: 20px;
+  color: var(--text2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-appearance: none;
+}
+
+/* ─── NEW PROJECT MODAL ─── */
+#project-modal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.8);
+  z-index: 100;
+  align-items: flex-end;
+  justify-content: center;
+}
+#project-modal.visible { display: flex; }
+#project-sheet {
+  background: var(--surface);
+  border-radius: 22px 22px 0 0;
+  padding: 24px 20px;
+  padding-bottom: max(28px, env(safe-area-inset-bottom));
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+#project-sheet h3 { font-size: 17px; font-weight: 700; color: var(--text); }
+#project-sheet .detected { font-size: 12px; color: var(--text2); font-family: 'DM Mono', monospace; }
+#project-name-input {
+  width: 100%;
+  background: var(--surface2);
+  border: 0.5px solid var(--border2);
+  border-radius: 12px;
+  padding: 13px 16px;
+  font-size: 16px;
+  color: var(--text);
+  font-family: inherit;
+  outline: none;
+  -webkit-appearance: none;
+}
+#project-name-input::placeholder { color: var(--text3); }
+#btn-project-confirm {
+  width: 100%;
+  height: 52px;
+  background: var(--accent);
+  border: none;
+  border-radius: 14px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111;
+  cursor: pointer;
+  -webkit-appearance: none;
+}
+#btn-project-skip {
+  width: 100%;
+  height: 44px;
+  background: transparent;
+  border: 0.5px solid var(--border2);
+  border-radius: 14px;
+  font-size: 14px;
+  color: var(--text2);
+  cursor: pointer;
+  -webkit-appearance: none;
+}
+
+/* ─── LIGHTBOX ─── */
+#lightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.95);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+}
+#lightbox.visible { display: flex; }
+#lightbox img { max-width: 96vw; max-height: 92vh; object-fit: contain; border-radius: 8px; }
+#lightbox-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.12);
+  border: none;
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ─── API KEY SCREEN ─── */
+#key-screen {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 300;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  gap: 16px;
+}
+#key-screen .k-icon { font-size: 52px; margin-bottom: 4px; }
+#key-screen h2 { font-size: 24px; font-weight: 700; color: var(--accent); }
+#key-screen p { font-size: 13px; color: var(--text2); text-align: center; max-width: 280px; line-height: 1.6; }
+#key-input {
+  width: 100%;
+  max-width: 320px;
+  background: var(--surface2);
+  border: 0.5px solid var(--border2);
+  border-radius: 12px;
+  padding: 13px 16px;
+  font-size: 13px;
+  color: var(--text);
+  font-family: 'DM Mono', monospace;
+  outline: none;
+  -webkit-appearance: none;
+}
+#key-save {
+  width: 100%;
+  max-width: 320px;
+  height: 54px;
+  background: var(--accent);
+  border: none;
+  border-radius: 15px;
+  font-size: 16px;
+  font-weight: 700;
+  color: #111;
+  cursor: pointer;
+  -webkit-appearance: none;
+}
+#key-hint { font-size: 11px; color: var(--text3); text-align: center; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="header">
+    <div id="header-left">
+      <h1>Hammer Time 🔨</h1>
+      <div id="header-location">henter lokation...</div>
+    </div>
+    <div id="project-pill">intet projekt</div>
+  </div>
+
+  <div id="feed">
+    <div id="empty">
+      <div class="icon">🔨</div>
+      <h2>Klar</h2>
+      <p>Tag et foto eller skriv en note. GPS og tid logges automatisk.</p>
+    </div>
+  </div>
+
+  <div id="bottom-bar">
+    <div id="text-panel">
+      <textarea id="text-input" placeholder="Skriv en note..." rows="1"></textarea>
+      <div id="text-actions">
+        <button id="btn-text-log">Log det ✓</button>
+        <button id="btn-text-cancel">×</button>
+      </div>
+    </div>
+    <div id="btn-row">
+      <button id="btn-camera">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#111" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+          <circle cx="12" cy="13" r="4"/>
+        </svg>
+        Foto
+      </button>
+      <button id="btn-note">
+        <svg viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="2" stroke-linecap="round">
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <line x1="3" y1="12" x2="21" y2="12"/>
+          <line x1="3" y1="18" x2="15" y2="18"/>
+        </svg>
+      </button>
+    </div>
+    <input type="file" id="camera-input" accept="image/*" capture="environment">
+  </div>
+</div>
+
+<!-- Photo preview overlay -->
+<div id="photo-overlay">
+  <div id="preview-img-wrap">
+    <img id="preview-img" src="" alt="">
+    <div id="preview-meta">
+      <div id="preview-meta-text"></div>
+      <button id="btn-preview-discard">×</button>
+    </div>
+  </div>
+  <div id="preview-bottom">
+    <textarea id="preview-note" placeholder="Tilføj note... (valgfrit)" rows="1"></textarea>
+    <div id="preview-actions">
+      <button id="btn-preview-log">Log det ✓</button>
+      <button id="btn-preview-cancel">×</button>
+    </div>
+  </div>
+</div>
+
+<!-- New project modal -->
+<div id="project-modal">
+  <div id="project-sheet">
+    <h3>Ny lokation</h3>
+    <div class="detected" id="detected-addr">henter adresse...</div>
+    <input id="project-name-input" type="text" placeholder="Giv sagen et navn...">
+    <button id="btn-project-confirm">Gem sag</button>
+    <button id="btn-project-skip">Spring over</button>
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div id="lightbox">
+  <button id="lightbox-close">×</button>
+  <img id="lightbox-img" src="" alt="">
+</div>
+
+<!-- API key screen -->
+<div id="key-screen">
+  <div class="k-icon">🔨</div>
+  <h2>Hammer Time</h2>
+  <p>Indsæt din Anthropic API nøgle. Den gemmes kun på denne enhed.</p>
+  <input id="key-input" type="password" placeholder="sk-ant-api03-...">
+  <button id="key-save">Kom i gang</button>
+  <p id="key-hint">console.anthropic.com → API Keys</p>
+</div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getFirestore, collection, addDoc, getDocs, query, orderBy, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+import { getStorage, ref, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-storage.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAglgiWxVoXo6O8bLZOWCeJqYkRGjKzr0k",
+  authDomain: "hammertime-d30bf.firebaseapp.com",
+  projectId: "hammertime-d30bf",
+  storageBucket: "hammertime-d30bf.firebasestorage.app",
+  messagingSenderId: "607382441157",
+  appId: "1:607382441157:web:410e1e5df3e35b39c2b4ac"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+const storage = getStorage(fbApp);
+
+// ─── STATE ───
+let currentLocation = null;
+let currentProject = null;
+let knownProjects = {}; // { "key": { name, lat, lng } }
+let pendingPhotoFile = null;
+let pendingPhotoDataUrl = null;
+let pendingLogCallback = null;
+let CLAUDE_API_KEY = '';
+
+// ─── DOM ───
+const feed = document.getElementById('feed');
+const empty = document.getElementById('empty');
+const headerLocation = document.getElementById('header-location');
+const projectPill = document.getElementById('project-pill');
+const btnCamera = document.getElementById('btn-camera');
+const btnNote = document.getElementById('btn-note');
+const cameraInput = document.getElementById('camera-input');
+const textPanel = document.getElementById('text-panel');
+const textInput = document.getElementById('text-input');
+const btnTextLog = document.getElementById('btn-text-log');
+const btnTextCancel = document.getElementById('btn-text-cancel');
+const btnRow = document.getElementById('btn-row');
+const photoOverlay = document.getElementById('photo-overlay');
+const previewImg = document.getElementById('preview-img');
+const previewMetaText = document.getElementById('preview-meta-text');
+const previewNote = document.getElementById('preview-note');
+const btnPreviewLog = document.getElementById('btn-preview-log');
+const btnPreviewDiscard = document.getElementById('btn-preview-discard');
+const btnPreviewCancel = document.getElementById('btn-preview-cancel');
+const projectModal = document.getElementById('project-modal');
+const detectedAddr = document.getElementById('detected-addr');
+const projectNameInput = document.getElementById('project-name-input');
+const btnProjectConfirm = document.getElementById('btn-project-confirm');
+const btnProjectSkip = document.getElementById('btn-project-skip');
+const lightbox = document.getElementById('lightbox');
+const lightboxImg = document.getElementById('lightbox-img');
+
+// ─── GPS ───
+function locationKey(lat, lng) {
+  // 150m radius — round to 3 decimal places (~111m per 0.001 degree)
+  return `${lat.toFixed(3)},${lng.toFixed(3)}`;
+}
+
+async function reverseGeocode(lat, lng) {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+      { headers: { 'Accept-Language': 'da' } }
+    );
+    const d = await res.json();
+    const a = d.address || {};
+    const road = a.road || '';
+    const num = a.house_number || '';
+    const city = a.city || a.town || a.village || '';
+    return [road, num].filter(Boolean).join(' ') + (city ? `, ${city}` : '') || null;
+  } catch { return null; }
+}
+
+function setProject(name, save = true) {
+  currentProject = name;
+  projectPill.textContent = name;
+  projectPill.classList.add('active');
+  if (save && currentLocation) {
+    const key = locationKey(currentLocation.lat, currentLocation.lng);
+    knownProjects[key] = { name, lat: currentLocation.lat, lng: currentLocation.lng };
+    localStorage.setItem('ht_projects_v3', JSON.stringify(knownProjects));
+  }
+}
+
+projectPill.onclick = () => {
+  const name = prompt('Ret sagens navn:', currentProject || '');
+  if (name?.trim()) setProject(name.trim());
+};
+
+async function updateLocation() {
+  if (!navigator.geolocation) return;
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    const address = await reverseGeocode(lat, lng);
+    currentLocation = { lat, lng, accuracy: pos.coords.accuracy, address };
+
+    headerLocation.textContent = address || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+    headerLocation.classList.add('active');
+
+    // Match known project
+    const key = locationKey(lat, lng);
+    if (knownProjects[key]) {
+      setProject(knownProjects[key].name, false);
+    }
+  }, err => {
+    headerLocation.textContent = 'GPS ikke tilgængelig';
+  }, { enableHighAccuracy: true, timeout: 15000 });
+}
+
+// ─── UTILS ───
+function fmtTime(d) {
+  return d.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' });
+}
+function fmtDate(d) {
+  return d.toLocaleDateString('da-DK', { day: 'numeric', month: 'short' });
+}
+
+function compressImage(file) {
+  return new Promise(resolve => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 1400;
+      let w = img.width, h = img.height;
+      if (w > MAX || h > MAX) {
+        if (w > h) { h = Math.round(h * MAX / w); w = MAX; }
+        else { w = Math.round(w * MAX / h); h = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => {
+        URL.revokeObjectURL(url);
+        resolve({ blob, dataUrl: canvas.toDataURL('image/jpeg', 0.82) });
+      }, 'image/jpeg', 0.82);
+    };
+    img.src = url;
+  });
+}
+
+async function uploadPhoto(file) {
+  const r = ref(storage, `photos/${Date.now()}_${file.name || 'photo.jpg'}`);
+  await uploadBytes(r, file);
+  return await getDownloadURL(r);
+}
+
+async function saveLog(data) {
+  try {
+    await addDoc(collection(db, 'logs'), {
+      ...data,
+      project: currentProject || null,
+      location: currentLocation ? {
+        lat: currentLocation.lat,
+        lng: currentLocation.lng,
+        accuracy: currentLocation.accuracy,
+        address: currentLocation.address || null
+      } : null,
+      timestamp: serverTimestamp()
+    });
+  } catch(e) { console.error('Save error:', e); }
+}
+
+// ─── FEED ───
+function addEntry({ photoSrc, note, location, timestamp, confirmed }) {
+  empty.style.display = 'none';
+  const el = document.createElement('div');
+  el.className = 'entry';
+
+  if (photoSrc) {
+    const img = document.createElement('img');
+    img.className = 'entry-photo';
+    img.src = photoSrc;
+    img.loading = 'lazy';
+    img.onclick = () => { lightboxImg.src = photoSrc; lightbox.classList.add('visible'); };
+    el.appendChild(img);
+  }
+
+  if (note) {
+    const n = document.createElement('div');
+    n.className = 'entry-note';
+    n.textContent = note;
+    el.appendChild(n);
+  }
+
+  if (confirmed) {
+    const tag = document.createElement('div');
+    tag.className = 'confirm-tag';
+    tag.textContent = '✓ logget';
+    el.appendChild(tag);
+  }
+
+  const ts = timestamp || new Date();
+  const meta = document.createElement('div');
+  meta.className = 'entry-meta';
+  const dot = document.createElement('div');
+  dot.className = 'entry-dot';
+  const txt = document.createElement('div');
+  txt.className = 'entry-meta-text';
+  const loc = location?.address || currentProject || '';
+  txt.textContent = `${fmtTime(ts)} · ${fmtDate(ts)}${loc ? ' · ' + loc : ''}`;
+  meta.appendChild(dot);
+  meta.appendChild(txt);
+  el.appendChild(meta);
+
+  feed.appendChild(el);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+// ─── PROJECT CHECK ───
+function isNewLocation() {
+  if (!currentLocation) return false;
+  const key = locationKey(currentLocation.lat, currentLocation.lng);
+  return !knownProjects[key];
+}
+
+function showNewProjectPrompt(onDone) {
+  const addr = currentLocation?.address || `${currentLocation?.lat?.toFixed(4)}, ${currentLocation?.lng?.toFixed(4)}` || 'Ukendt';
+  detectedAddr.textContent = addr;
+  projectNameInput.value = addr;
+  projectModal.classList.add('visible');
+  pendingLogCallback = onDone;
+}
+
+btnProjectConfirm.onclick = () => {
+  const name = projectNameInput.value.trim() || detectedAddr.textContent;
+  setProject(name);
+  projectModal.classList.remove('visible');
+  if (pendingLogCallback) { pendingLogCallback(); pendingLogCallback = null; }
+};
+
+btnProjectSkip.onclick = () => {
+  projectModal.classList.remove('visible');
+  if (pendingLogCallback) { pendingLogCallback(); pendingLogCallback = null; }
+};
+
+// ─── CAMERA ───
+btnCamera.onclick = () => cameraInput.click();
+
+cameraInput.onchange = async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  cameraInput.value = '';
+
+  const { blob, dataUrl } = await compressImage(file);
+  pendingPhotoFile = new File([blob], file.name || 'photo.jpg', { type: 'image/jpeg' });
+  pendingPhotoDataUrl = dataUrl;
+
+  // Show full screen preview
+  previewImg.src = dataUrl;
+  const now = new Date();
+  previewMetaText.innerHTML = `${fmtTime(now)} · ${fmtDate(now)}<br>${currentLocation?.address || 'GPS...'}</br>`;
+  previewNote.value = '';
+  photoOverlay.classList.add('visible');
+};
+
+btnPreviewDiscard.onclick = btnPreviewCancel.onclick = () => {
+  photoOverlay.classList.remove('visible');
+  pendingPhotoFile = null;
+  pendingPhotoDataUrl = null;
+};
+
+btnPreviewLog.onclick = () => {
+  if (!pendingPhotoFile) return;
+  const note = previewNote.value.trim() || null;
+  const photoFile = pendingPhotoFile;
+  const photoDataUrl = pendingPhotoDataUrl;
+  pendingPhotoFile = null;
+  pendingPhotoDataUrl = null;
+  photoOverlay.classList.remove('visible');
+
+  const doLog = async () => {
+    addEntry({ photoSrc: photoDataUrl, note, confirmed: true });
+    try {
+      const photoUrl = await uploadPhoto(photoFile);
+      await saveLog({ photoUrl, note, role: 'log' });
+    } catch(e) { console.error(e); }
+  };
+
+  if (isNewLocation()) {
+    showNewProjectPrompt(doLog);
+  } else {
+    doLog();
+  }
+};
+
+// ─── TEXT NOTE ───
+btnNote.onclick = () => {
+  btnRow.style.display = 'none';
+  textPanel.classList.add('visible');
+  textInput.focus();
+};
+
+btnTextCancel.onclick = () => {
+  textPanel.classList.remove('visible');
+  btnRow.style.display = 'flex';
+  textInput.value = '';
+  textInput.style.height = 'auto';
+};
+
+textInput.oninput = () => {
+  textInput.style.height = 'auto';
+  textInput.style.height = Math.min(textInput.scrollHeight, 120) + 'px';
+};
+
+textInput.onkeydown = e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); btnTextLog.click(); }
+};
+
+btnTextLog.onclick = () => {
+  const note = textInput.value.trim();
+  if (!note) return;
+
+  textPanel.classList.remove('visible');
+  btnRow.style.display = 'flex';
+  textInput.value = '';
+  textInput.style.height = 'auto';
+
+  const doLog = async () => {
+    addEntry({ note, confirmed: true });
+    await saveLog({ note, role: 'log' });
+  };
+
+  if (isNewLocation()) {
+    showNewProjectPrompt(doLog);
+  } else {
+    doLog();
+  }
+};
+
+// ─── LIGHTBOX ───
+document.getElementById('lightbox-close').onclick = () => lightbox.classList.remove('visible');
+lightbox.onclick = e => { if (e.target === lightbox) lightbox.classList.remove('visible'); };
+
+// ─── LOAD HISTORY ───
+async function loadHistory() {
+  try {
+    const q = query(collection(db, 'logs'), orderBy('timestamp', 'asc'));
+    const snap = await getDocs(q);
+    const entries = [];
+    snap.forEach(doc => entries.push({ id: doc.id, ...doc.data() }));
+
+    const recent = entries.filter(e => e.role === 'log' || e.role === 'user').slice(-30);
+    if (recent.length > 0) {
+      recent.forEach(e => {
+        addEntry({
+          photoSrc: e.photoUrl,
+          note: e.note || e.text || null,
+          location: e.location,
+          timestamp: e.timestamp?.toDate?.() || new Date()
+        });
+      });
+      const last = [...entries].reverse().find(e => e.project);
+      if (last?.project) setProject(last.project, false);
+    }
+  } catch(e) { console.error('Load error:', e); }
+}
+
+function loadKnownProjects() {
+  try {
+    const s = localStorage.getItem('ht_projects_v3');
+    if (s) knownProjects = JSON.parse(s);
+  } catch {}
+}
+
+// ─── API KEY + INIT ───
+function init() {
+  CLAUDE_API_KEY = localStorage.getItem('ht_api_key') || '';
+  loadKnownProjects();
+
+  if (!CLAUDE_API_KEY) {
+    document.getElementById('key-screen').style.display = 'flex';
+    return;
+  }
+  loadHistory();
+  updateLocation();
+  setInterval(updateLocation, 120000);
+}
+
+document.getElementById('key-save').onclick = () => {
+  const val = document.getElementById('key-input').value.trim();
+  if (!val.startsWith('sk-ant-')) { alert('Ugyldig nøgle — skal starte med sk-ant-'); return; }
+  localStorage.setItem('ht_api_key', val);
+  CLAUDE_API_KEY = val;
+  document.getElementById('key-screen').style.display = 'none';
+  loadHistory();
+  updateLocation();
+  setInterval(updateLocation, 120000);
+};
+
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hammer Time — Export</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap');
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #0f0f0f;
+  --surface: #181818;
+  --surface2: #222;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.13);
+  --text: #f0f0f0;
+  --text2: #888;
+  --text3: #3a3a3a;
+  --accent: #f0c040;
+  --green: #3a9e6a;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  min-height: 100vh;
+}
+
+#wrap {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 32px 20px 64px;
+}
+
+/* ── HEADER ── */
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 32px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+header h1 {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent);
+}
+header p {
+  font-size: 12px;
+  color: var(--text2);
+  font-family: 'DM Mono', monospace;
+  margin-top: 3px;
+}
+
+#stats {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.stat {
+  background: var(--surface);
+  border: 0.5px solid var(--border2);
+  border-radius: 10px;
+  padding: 8px 14px;
+  text-align: center;
+}
+.stat-val {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent);
+  font-family: 'DM Mono', monospace;
+}
+.stat-label {
+  font-size: 10px;
+  color: var(--text2);
+  margin-top: 1px;
+}
+
+/* ── FILTERS ── */
+#filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+#filters label {
+  font-size: 11px;
+  color: var(--text2);
+  font-family: 'DM Mono', monospace;
+}
+#filter-project {
+  background: var(--surface2);
+  border: 0.5px solid var(--border2);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+  color: var(--text);
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+}
+#filter-project option { background: #222; }
+
+/* ── PROJECT GROUPS ── */
+.project-group {
+  margin-bottom: 40px;
+}
+.project-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 0.5px solid var(--border2);
+}
+.project-heading h2 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.project-heading .entry-count {
+  font-size: 11px;
+  color: var(--text2);
+  font-family: 'DM Mono', monospace;
+  background: var(--surface2);
+  border-radius: 20px;
+  padding: 2px 9px;
+}
+
+/* ── ENTRIES ── */
+.entries {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.entry {
+  background: var(--surface);
+  border: 0.5px solid var(--border2);
+  border-radius: 14px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.entry-photo {
+  width: 100%;
+  max-height: 360px;
+  object-fit: cover;
+  display: block;
+  cursor: zoom-in;
+  border-bottom: 0.5px solid var(--border2);
+}
+
+.entry-body {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.entry-note {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.entry-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 11px;
+  color: var(--text2);
+  font-family: 'DM Mono', monospace;
+}
+.entry-meta span { display: flex; align-items: center; gap: 4px; }
+
+.entry-photo-link {
+  font-size: 10px;
+  color: var(--text3);
+  font-family: 'DM Mono', monospace;
+  word-break: break-all;
+  line-height: 1.4;
+  text-decoration: none;
+  border-top: 0.5px solid var(--border);
+  padding-top: 8px;
+  margin-top: 2px;
+  display: block;
+}
+.entry-photo-link:hover { color: var(--text2); }
+
+/* ── LIGHTBOX ── */
+#lightbox {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.95);
+  z-index: 200;
+  align-items: center;
+  justify-content: center;
+}
+#lightbox.visible { display: flex; }
+#lightbox img { max-width: 96vw; max-height: 92vh; object-fit: contain; border-radius: 8px; }
+#lightbox-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.12);
+  border: none;
+  color: white;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── STATUS ── */
+#status {
+  text-align: center;
+  padding: 60px 0;
+  font-size: 14px;
+  color: var(--text2);
+  font-family: 'DM Mono', monospace;
+}
+#status.error { color: #d04444; }
+
+/* ── EMPTY STATE ── */
+.empty {
+  text-align: center;
+  padding: 40px;
+  font-size: 13px;
+  color: var(--text3);
+}
+</style>
+</head>
+<body>
+
+<div id="wrap">
+  <header>
+    <div>
+      <h1>🔨 Hammer Time — Export</h1>
+      <p id="load-time"></p>
+    </div>
+    <div id="stats">
+      <div class="stat"><div class="stat-val" id="stat-total">—</div><div class="stat-label">entries</div></div>
+      <div class="stat"><div class="stat-val" id="stat-photos">—</div><div class="stat-label">photos</div></div>
+      <div class="stat"><div class="stat-val" id="stat-projects">—</div><div class="stat-label">projects</div></div>
+    </div>
+  </header>
+
+  <div id="filters" style="display:none">
+    <label>Vis:</label>
+    <select id="filter-project">
+      <option value="">Alle projekter</option>
+    </select>
+  </div>
+
+  <div id="content">
+    <div id="status">Henter data fra Firebase...</div>
+  </div>
+</div>
+
+<div id="lightbox">
+  <button id="lightbox-close">×</button>
+  <img id="lightbox-img" src="" alt="">
+</div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+import { getFirestore, collection, getDocs, query, orderBy } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAglgiWxVoXo6O8bLZOWCeJqYkRGjKzr0k",
+  authDomain: "hammertime-d30bf.firebaseapp.com",
+  projectId: "hammertime-d30bf",
+  storageBucket: "hammertime-d30bf.firebasestorage.app",
+  messagingSenderId: "607382441157",
+  appId: "1:607382441157:web:410e1e5df3e35b39c2b4ac"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// ── LIGHTBOX ──
+const lightbox = document.getElementById('lightbox');
+const lightboxImg = document.getElementById('lightbox-img');
+document.getElementById('lightbox-close').onclick = () => lightbox.classList.remove('visible');
+lightbox.onclick = e => { if (e.target === lightbox) lightbox.classList.remove('visible'); };
+
+function openLightbox(src) {
+  lightboxImg.src = src;
+  lightbox.classList.add('visible');
+}
+
+// ── FORMAT HELPERS ──
+function fmtDateTime(d) {
+  if (!d) return '—';
+  return d.toLocaleString('da-DK', {
+    day: 'numeric', month: 'short', year: 'numeric',
+    hour: '2-digit', minute: '2-digit'
+  });
+}
+
+function fmtCoords(loc) {
+  if (!loc) return null;
+  return `${loc.lat.toFixed(5)}, ${loc.lng.toFixed(5)}`;
+}
+
+// ── RENDER ──
+function renderGroups(entries, filterProject) {
+  const content = document.getElementById('content');
+  content.innerHTML = '';
+
+  const filtered = filterProject
+    ? entries.filter(e => (e.project || 'Intet projekt') === filterProject)
+    : entries;
+
+  if (filtered.length === 0) {
+    content.innerHTML = '<div class="empty">Ingen entries fundet.</div>';
+    return;
+  }
+
+  // Group by project
+  const groups = {};
+  for (const e of filtered) {
+    const key = e.project || 'Intet projekt';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(e);
+  }
+
+  for (const [projectName, items] of Object.entries(groups)) {
+    const group = document.createElement('div');
+    group.className = 'project-group';
+
+    const heading = document.createElement('div');
+    heading.className = 'project-heading';
+    heading.innerHTML = `
+      <h2>${escHtml(projectName)}</h2>
+      <span class="entry-count">${items.length} ${items.length === 1 ? 'entry' : 'entries'}</span>
+    `;
+    group.appendChild(heading);
+
+    const list = document.createElement('div');
+    list.className = 'entries';
+
+    for (const entry of items) {
+      const el = document.createElement('div');
+      el.className = 'entry';
+
+      if (entry.photoUrl) {
+        const img = document.createElement('img');
+        img.className = 'entry-photo';
+        img.src = entry.photoUrl;
+        img.loading = 'lazy';
+        img.alt = entry.note || 'Foto';
+        img.onclick = () => openLightbox(entry.photoUrl);
+        el.appendChild(img);
+      }
+
+      const body = document.createElement('div');
+      body.className = 'entry-body';
+
+      if (entry.note || entry.text) {
+        const note = document.createElement('div');
+        note.className = 'entry-note';
+        note.textContent = entry.note || entry.text;
+        body.appendChild(note);
+      }
+
+      const meta = document.createElement('div');
+      meta.className = 'entry-meta';
+
+      const ts = entry.timestamp?.toDate?.();
+      if (ts) {
+        const timeEl = document.createElement('span');
+        timeEl.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>${escHtml(fmtDateTime(ts))}`;
+        meta.appendChild(timeEl);
+      }
+
+      if (entry.location?.address) {
+        const locEl = document.createElement('span');
+        locEl.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>${escHtml(entry.location.address)}`;
+        meta.appendChild(locEl);
+      } else if (entry.location) {
+        const coordEl = document.createElement('span');
+        const coords = fmtCoords(entry.location);
+        coordEl.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>${escHtml(coords)}`;
+        meta.appendChild(coordEl);
+      }
+
+      if (entry.location?.accuracy != null) {
+        const accEl = document.createElement('span');
+        accEl.textContent = `±${Math.round(entry.location.accuracy)}m`;
+        meta.appendChild(accEl);
+      }
+
+      body.appendChild(meta);
+
+      if (entry.photoUrl) {
+        const link = document.createElement('a');
+        link.className = 'entry-photo-link';
+        link.href = entry.photoUrl;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = entry.photoUrl;
+        body.appendChild(link);
+      }
+
+      el.appendChild(body);
+      list.appendChild(el);
+    }
+
+    group.appendChild(list);
+    content.appendChild(group);
+  }
+}
+
+function escHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ── LOAD ──
+async function load() {
+  const statusEl = document.getElementById('status');
+  const t0 = Date.now();
+
+  try {
+    const q = query(collection(db, 'logs'), orderBy('timestamp', 'asc'));
+    const snap = await getDocs(q);
+    const entries = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    document.getElementById('load-time').textContent =
+      `${entries.length} entries hentet på ${elapsed}s · ${new Date().toLocaleString('da-DK')}`;
+
+    // Stats
+    const photos = entries.filter(e => e.photoUrl).length;
+    const projects = new Set(entries.map(e => e.project || 'Intet projekt')).size;
+    document.getElementById('stat-total').textContent = entries.length;
+    document.getElementById('stat-photos').textContent = photos;
+    document.getElementById('stat-projects').textContent = projects;
+
+    // Populate filter dropdown
+    const projectNames = [...new Set(entries.map(e => e.project).filter(Boolean))].sort();
+    if (projectNames.length > 0) {
+      const sel = document.getElementById('filter-project');
+      for (const name of projectNames) {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        sel.appendChild(opt);
+      }
+      document.getElementById('filters').style.display = 'flex';
+
+      sel.onchange = () => renderGroups(entries, sel.value);
+    }
+
+    statusEl.style.display = 'none';
+    renderGroups(entries, '');
+
+  } catch (err) {
+    statusEl.className = 'error';
+    statusEl.textContent = `Fejl ved hentning: ${err.message}`;
+    console.error(err);
+  }
+}
+
+load();
+</script>
+</body>
+</html>
