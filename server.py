@@ -114,8 +114,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    with http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler) as srv:
+    with http.server.ThreadingHTTPServer(("0.0.0.0", PORT), Handler) as srv:
         print(f"Hammer Time dev server: http://localhost:{PORT}")
+        print(f"Network:               http://192.168.8.107:{PORT}")
         print(f"Proxy: {PROXY_PREFIX}/* -> {ANTHROPIC_ORIGIN}/*\n")
         try:
             srv.serve_forever()

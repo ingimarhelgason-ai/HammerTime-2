@@ -62,6 +62,15 @@ export async function updateProject(projectId, data) {
   await updateDoc(doc(db, 'projects', projectId), data)
 }
 
+// ─── TASKS (update) ─────────────────────────────────────────
+
+/**
+ * Update a task's fields.
+ */
+export async function updateTask(taskId, data) {
+  await updateDoc(doc(db, 'tasks', taskId), data)
+}
+
 // ─── TASKS ──────────────────────────────────────────────────
 
 /**

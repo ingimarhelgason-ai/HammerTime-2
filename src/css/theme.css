@@ -678,3 +678,188 @@ html, body {
 .safe-bottom {
   height: max(16px, env(safe-area-inset-bottom));
 }
+
+/* ─── PROJECT VIEW ─── */
+.project-header {
+  padding: 18px 18px 14px;
+  border-bottom: 0.5px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.project-header-address {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+  line-height: 1.2;
+  color: var(--accent);
+}
+
+.project-header-desc {
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.4;
+}
+
+.project-header-dates {
+  font-size: 11px;
+  color: var(--text3);
+  font-family: var(--mono);
+  margin-top: 2px;
+}
+
+/* ─── TASK ROW ─── */
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.task-row-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.task-row-name.done {
+  color: var(--text2);
+  text-decoration: line-through;
+  text-decoration-color: var(--text3);
+}
+
+.task-row-hours {
+  font-size: 11px;
+  color: var(--text3);
+  font-family: var(--mono);
+  flex-shrink: 0;
+}
+
+.task-status-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  font-family: var(--mono);
+  flex-shrink: 0;
+  cursor: pointer;
+  border: 0.5px solid transparent;
+  transition: opacity 0.15s;
+  background: none;
+}
+
+.task-status-btn:active { opacity: 0.7; }
+
+.task-status-btn.not-started {
+  background: var(--surface2);
+  color: var(--text3);
+  border-color: var(--border2);
+}
+
+.task-status-btn.in-progress {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent-rim);
+}
+
+.task-status-btn.done {
+  background: var(--green-dim);
+  color: var(--green);
+  border-color: rgba(58,158,106,0.25);
+}
+
+.task-log-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  border: 0.5px solid var(--border2);
+  background: var(--surface2);
+  color: var(--text2);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.task-log-btn:active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent-rim);
+}
+
+.task-log-btn svg { width: 15px; height: 15px; }
+
+/* ─── LOG CARD ─── */
+.log-card {
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.log-card-photo {
+  width: 100%;
+  display: block;
+  object-fit: cover;
+  max-height: 260px;
+  background: var(--surface2);
+}
+
+.log-card-note {
+  padding: 12px 14px;
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-card-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 14px 10px;
+  border-top: 0.5px solid var(--border);
+}
+
+.log-card-task {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--accent);
+  background: var(--accent-dim);
+  border: 0.5px solid var(--accent-rim);
+  border-radius: 20px;
+  padding: 2px 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 60%;
+}
+
+.log-card-task.untagged {
+  color: var(--text3);
+  background: transparent;
+  border-color: var(--border);
+}
+
+.log-card-time {
+  font-size: 11px;
+  font-family: var(--mono);
+  color: var(--text3);
+  flex-shrink: 0;
+}
