@@ -621,6 +621,68 @@ html, body {
 
 .btn-add-task svg { width: 14px; height: 14px; }
 
+/* ─── ADD TASK INLINE FORM ─── */
+.add-task-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface);
+  border: 0.5px solid var(--border2);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+.add-task-input {
+  width: 100%;
+  background: var(--surface2);
+  border: 0.5px solid var(--border2);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+  padding: 11px 13px;
+  outline: none;
+  -webkit-appearance: none;
+  transition: border-color 0.15s;
+}
+
+.add-task-input:focus { border-color: var(--accent-rim); }
+.add-task-input::placeholder { color: var(--text3); }
+
+.add-task-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.btn-cancel-task {
+  padding: 9px 16px;
+  background: transparent;
+  border: 0.5px solid var(--border2);
+  border-radius: var(--radius-sm);
+  color: var(--text2);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-cancel-task:active { background: var(--surface2); }
+
+.btn-save-task {
+  padding: 9px 18px;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: #000;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn-save-task:active { background: var(--accent-dark); }
+.btn-save-task:disabled { opacity: 0.4; pointer-events: none; }
+
 /* ─── DIVIDER ─── */
 .divider {
   height: 0.5px;

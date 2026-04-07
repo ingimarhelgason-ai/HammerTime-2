@@ -1,5 +1,4 @@
-// Use a same-origin proxy in dev to avoid CORS; point at Anthropic directly in prod.
-const API_URL = '/api/anthropic/v1/messages'
+const API_URL = 'https://api.anthropic.com/v1/messages'
 const MODEL = 'claude-sonnet-4-6'
 
 export function getApiKey() {

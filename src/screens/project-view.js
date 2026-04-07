@@ -1,4 +1,4 @@
-import { getProject, subscribeToTasks, subscribeToLogs, updateTask } from '../js/api.js'
+import { getProject, subscribeToTasks, subscribeToLogs, updateTask, createTask } from '../js/api.js'
 import { formatDateShort, taskStatusLabel, formatTimestamp, relativeDate } from '../js/utils.js'
 
 // ─── STATE ──────────────────────────────────────────────────
@@ -46,6 +46,31 @@ export async function render(container, params = {}) {
     window.navigate('log', { projectId })
   })
 
+  const btnAddTask    = container.querySelector('#btn-add-task')
+  const addTaskForm   = container.querySelector('#add-task-form')
+  const btnCancelTask = container.querySelector('#btn-cancel-task')
+  const btnSaveTask   = container.querySelector('#btn-save-task')
+  const newTaskInput  = container.querySelector('#new-task-name')
+
+  btnAddTask.addEventListener('click', () => {
+    addTaskForm.style.display = 'block'
+    btnAddTask.style.display  = 'none'
+    newTaskInput.value = ''
+    newTaskInput.focus()
+  })
+
+  btnCancelTask.addEventListener('click', () => {
+    addTaskForm.style.display = 'none'
+    btnAddTask.style.display  = 'block'
+  })
+
+  btnSaveTask.addEventListener('click', () => saveNewTask(container, projectId))
+
+  newTaskInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter') saveNewTask(container, projectId)
+    if (e.key === 'Escape') btnCancelTask.click()
+  })
+
   if (_logSaved) showToast(container, 'Log gemt!')
 }
 
@@ -79,6 +104,22 @@ function buildShell() {
         </div>
         <div class="list-content" id="task-list">
           <div class="empty-state"><div class="spinner"></div></div>
+        </div>
+
+        <div style="padding:8px 14px 4px;">
+          <button class="btn-add-task" id="btn-add-task">
+            ${iconPlus()} Tilføj opgave
+          </button>
+        </div>
+
+        <div id="add-task-form" style="display:none; padding:0 14px 8px;">
+          <div class="add-task-inner">
+            <input id="new-task-name" class="add-task-input" type="text" placeholder="Opgavenavn" maxlength="200" autocomplete="off">
+            <div class="add-task-actions">
+              <button class="btn-cancel-task" id="btn-cancel-task">Annuller</button>
+              <button class="btn-save-task" id="btn-save-task">Gem</button>
+            </div>
+          </div>
         </div>
 
         <div class="section-header" style="margin-top:8px;">
@@ -257,6 +298,29 @@ function buildLogCard(log) {
 
 // ─── HELPERS ────────────────────────────────────────────────
 
+async function saveNewTask(container, projectId) {
+  const input = container.querySelector('#new-task-name')
+  const name  = input.value.trim()
+  if (!name) { input.focus(); return }
+
+  const btn = container.querySelector('#btn-save-task')
+  btn.disabled = true
+  btn.textContent = '...'
+
+  try {
+    await createTask(projectId, name)
+    container.querySelector('#add-task-form').style.display = 'none'
+    container.querySelector('#btn-add-task').style.display  = 'block'
+    showToast(container, 'Opgave tilføjet')
+  } catch (err) {
+    console.error('Kunne ikke oprette opgave:', err)
+    showToast(container, 'Fejl ved oprettelse', true)
+  } finally {
+    btn.disabled = false
+    btn.textContent = 'Gem'
+  }
+}
+
 function showToast(container, message, isError = false) {
   const area = container.querySelector('#toast-area')
   if (!area) return
@@ -291,6 +355,10 @@ function escapeAttr(str) {
 
 function iconBack() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>`
+}
+
+function iconPlus() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;vertical-align:-2px;"><path d="M12 5v14M5 12h14"/></svg>`
 }
 
 function iconCamera() {
