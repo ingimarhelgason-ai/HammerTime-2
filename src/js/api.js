@@ -65,6 +65,15 @@ export async function updateProject(projectId, data) {
 // ─── TASKS (update) ─────────────────────────────────────────
 
 /**
+ * Get a single task by ID.
+ */
+export async function getTask(taskId) {
+  const snap = await getDoc(doc(db, 'tasks', taskId))
+  if (!snap.exists()) return null
+  return { id: snap.id, ...snap.data() }
+}
+
+/**
  * Update a task's fields.
  */
 export async function updateTask(taskId, data) {

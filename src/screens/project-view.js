@@ -1,5 +1,6 @@
 import { getProject, subscribeToTasks, subscribeToLogs, updateTask, createTask } from '../js/api.js'
 import { formatDateShort, taskStatusLabel, formatTimestamp, relativeDate } from '../js/utils.js'
+import { getActive, setActive, updateActiveStatus } from '../js/activeTask.js'
 
 // ─── STATE ──────────────────────────────────────────────────
 
@@ -34,7 +35,7 @@ export async function render(container, params = {}) {
   // Real-time tasks
   _unsubTasks = subscribeToTasks(projectId, tasks => {
     _taskMap = Object.fromEntries(tasks.map(t => [t.id, t.name || 'Unavngivet opgave']))
-    renderTaskList(container, tasks, projectId)
+    renderTaskList(container, tasks, projectId, project)
   })
 
   // Real-time log feed
@@ -174,7 +175,7 @@ function buildDateStr(project) {
 
 // ─── TASK LIST ──────────────────────────────────────────────
 
-function renderTaskList(container, tasks, projectId) {
+function renderTaskList(container, tasks, projectId, project) {
   const list    = container.querySelector('#task-list')
   const countEl = container.querySelector('#tasks-count')
   if (!list) return
@@ -194,18 +195,30 @@ function renderTaskList(container, tasks, projectId) {
     return
   }
 
-  list.innerHTML = tasks.map(t => buildTaskRow(t)).join('')
+  const currentActive = getActive()
+  list.innerHTML = tasks.map(t => buildTaskRow(t, currentActive)).join('')
 
   list.querySelectorAll('.task-status-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
-      const taskId  = btn.closest('.task-row').dataset.taskId
+      const row     = btn.closest('.task-row')
+      const taskId  = row.dataset.taskId
       const current = btn.dataset.status
       const next    = cycleStatus(current)
       btn.dataset.status = next
       btn.className  = `task-status-btn ${statusClass(next)}`
       btn.textContent = taskStatusLabel(next)
-      const nameEl = btn.closest('.task-row').querySelector('.task-row-name')
+      const nameEl = row.querySelector('.task-row-name')
       if (nameEl) nameEl.classList.toggle('done', next === 'done')
+
+      // Update active task status cache if this is the active task
+      const active = getActive()
+      if (active && active.taskId === taskId) {
+        updateActiveStatus(next)
+        if (next === 'done') {
+          showNextTaskPrompt(container, tasks, projectId, project)
+        }
+      }
+
       try { await updateTask(taskId, { status: next }) }
       catch (err) { console.error('Kunne ikke opdatere opgavestatus:', err) }
     })
@@ -221,23 +234,63 @@ function renderTaskList(container, tasks, projectId) {
       })
     })
   })
+
+  list.querySelectorAll('.task-set-active-btn').forEach(btn => {
+    btn.addEventListener('click', async e => {
+      e.stopPropagation()
+      const row        = btn.closest('.task-row')
+      const taskId     = row.dataset.taskId
+      const taskName   = row.dataset.taskName
+      const taskStatus = row.dataset.taskStatus
+
+      const prev = getActive()
+      if (prev && prev.taskId && prev.taskId !== taskId && prev.taskStatus !== 'done') {
+        try { await updateTask(prev.taskId, { status: 'in progress' }) } catch { /* ignore */ }
+      }
+
+      let finalStatus = taskStatus
+      if (taskStatus === 'not started') {
+        try { await updateTask(taskId, { status: 'in progress' }) } catch { /* ignore */ }
+        finalStatus = 'in progress'
+      }
+
+      setActive({
+        projectId,
+        taskId,
+        taskName,
+        projectAddr: project?.address || '',
+        taskStatus: finalStatus
+      })
+
+      showToast(container, `"${taskName}" er nu aktiv opgave`)
+      // Re-render task list to update indicators
+      renderTaskList(container, tasks, projectId, project)
+    })
+  })
 }
 
-function buildTaskRow(task) {
-  const sc    = statusClass(task.status)
-  const isDone = task.status === 'done'
+function buildTaskRow(task, currentActive) {
+  const sc      = statusClass(task.status)
+  const isDone  = task.status === 'done'
+  const isActive = currentActive && currentActive.taskId === task.id
   return `
-    <div class="task-row" data-task-id="${escapeAttr(task.id)}" data-task-name="${escapeAttr(task.name || '')}">
-      <div class="task-row-name${isDone ? ' done' : ''}">${escapeHtml(task.name || 'Unavngivet opgave')}</div>
+    <div class="task-row${isActive ? ' task-row-active' : ''}"
+         data-task-id="${escapeAttr(task.id)}"
+         data-task-name="${escapeAttr(task.name || '')}"
+         data-task-status="${escapeAttr(task.status)}">
+      <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;">
+        ${isActive ? `<div class="task-active-label">Aktiv opgave</div>` : ''}
+        <div class="task-row-name${isDone ? ' done' : ''}">${escapeHtml(task.name || 'Unavngivet opgave')}</div>
+      </div>
       ${task.estimatedHours != null
         ? `<div class="task-row-hours">${task.estimatedHours}t</div>`
         : ''}
       <button class="task-status-btn ${sc}" data-status="${escapeAttr(task.status)}" title="Skift status">
         ${taskStatusLabel(task.status)}
       </button>
-      <button class="task-log-btn" aria-label="Log mod denne opgave" title="Log">
-        ${iconCamera()}
-      </button>
+      ${!isActive && !isDone
+        ? `<button class="task-set-active-btn" title="Sæt som aktiv opgave" aria-label="Sæt aktiv">${iconBolt()}</button>`
+        : `<button class="task-log-btn" aria-label="Log mod denne opgave" title="Log">${iconCamera()}</button>`}
     </div>
   `
 }
@@ -351,6 +404,77 @@ function escapeAttr(str) {
   return String(str).replace(/"/g, '&quot;')
 }
 
+// ─── NEXT TASK PROMPT ────────────────────────────────────────
+
+function showNextTaskPrompt(container, tasks, projectId, project) {
+  // Remove existing prompt if any
+  container.querySelector('#next-task-prompt')?.remove()
+
+  const remaining = tasks.filter(t => t.status !== 'done')
+  const promptEl  = document.createElement('div')
+  promptEl.id = 'next-task-prompt'
+  promptEl.className = 'next-task-prompt'
+
+  if (remaining.length === 0) {
+    promptEl.innerHTML = `
+      <div class="next-task-prompt-title">Alle opgaver er færdige!</div>
+      <div class="next-task-prompt-body">Godt arbejde — projektet kan afsluttes.</div>
+      <button class="next-task-dismiss" id="btn-prompt-dismiss">Luk</button>
+    `
+  } else {
+    promptEl.innerHTML = `
+      <div class="next-task-prompt-title">Vælg næste opgave</div>
+      <div class="next-task-prompt-tasks" id="prompt-task-list">
+        ${remaining.map(t => `
+          <div class="next-task-option" data-task-id="${escapeAttr(t.id)}" data-task-name="${escapeAttr(t.name || '')}" data-task-status="${escapeAttr(t.status)}">
+            ${escapeHtml(t.name || 'Unavngivet opgave')}
+          </div>
+        `).join('')}
+      </div>
+      <button class="next-task-dismiss" id="btn-prompt-dismiss">Annuller</button>
+    `
+  }
+
+  // Insert after task list section
+  const taskList = container.querySelector('#task-list')
+  taskList?.after(promptEl)
+
+  promptEl.querySelector('#btn-prompt-dismiss').addEventListener('click', () => {
+    promptEl.remove()
+  })
+
+  promptEl.querySelectorAll('.next-task-option').forEach(el => {
+    el.addEventListener('click', async () => {
+      const taskId     = el.dataset.taskId
+      const taskName   = el.dataset.taskName
+      const taskStatus = el.dataset.taskStatus
+
+      const prev = getActive()
+      if (prev && prev.taskId && prev.taskId !== taskId && prev.taskStatus !== 'done') {
+        try { await updateTask(prev.taskId, { status: 'in progress' }) } catch { /* ignore */ }
+      }
+
+      let finalStatus = taskStatus
+      if (taskStatus === 'not started') {
+        try { await updateTask(taskId, { status: 'in progress' }) } catch { /* ignore */ }
+        finalStatus = 'in progress'
+      }
+
+      setActive({
+        projectId,
+        taskId,
+        taskName,
+        projectAddr: project?.address || '',
+        taskStatus: finalStatus
+      })
+
+      promptEl.remove()
+      showToast(container, `"${taskName}" er nu aktiv opgave`)
+      // Re-render task list to update indicators (tasks array is stale here, subscription will re-render)
+    })
+  })
+}
+
 // ─── ICONS ──────────────────────────────────────────────────
 
 function iconBack() {
@@ -365,5 +489,11 @@ function iconCamera() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
     <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
     <circle cx="12" cy="13" r="4"/>
+  </svg>`
+}
+
+function iconBolt() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15">
+    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
   </svg>`
 }

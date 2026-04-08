@@ -17,7 +17,7 @@ let _saving      = false
 // ─── LIFECYCLE ──────────────────────────────────────────────
 
 export function render(container, params = {}) {
-  const { projectId, taskId = null, taskName = null } = params
+  const { projectId, taskId = null, taskName = null, returnTo = null, noteOnly = false } = params
   if (!projectId) { window.navigate('home'); return }
 
   // Reset state on each render
@@ -30,7 +30,8 @@ export function render(container, params = {}) {
 
   // Back
   container.querySelector('#btn-back').addEventListener('click', () => {
-    window.navigate('project-view', { projectId })
+    if (returnTo === 'home') window.navigate('home')
+    else window.navigate('project-view', { projectId })
   })
 
   // Hidden file input — camera
@@ -45,7 +46,7 @@ export function render(container, params = {}) {
       _photoBlob    = blob
       _photoPreview = URL.createObjectURL(blob)
       _mode         = 'photo'
-      renderPhotoState(container, projectId, taskId)
+      renderPhotoState(container, projectId, taskId, returnTo)
     } catch (err) {
       showToast(container, 'Kan ikke læse billede', true)
     }
@@ -54,8 +55,14 @@ export function render(container, params = {}) {
   // Note-only path
   container.querySelector('#btn-note-only').addEventListener('click', () => {
     _mode = 'note'
-    renderNoteState(container, projectId, taskId)
+    renderNoteState(container, projectId, taskId, returnTo)
   })
+
+  // Jump directly to note state if requested
+  if (noteOnly) {
+    _mode = 'note'
+    renderNoteState(container, projectId, taskId, returnTo)
+  }
 }
 
 export function destroy() {
@@ -149,7 +156,7 @@ function buildInitialState() {
 
 // ─── PHOTO STATE ────────────────────────────────────────────
 
-function renderPhotoState(container, projectId, taskId) {
+function renderPhotoState(container, projectId, taskId, returnTo) {
   const body = container.querySelector('#log-body')
   body.innerHTML = `
     <div style="display:flex;flex-direction:column;height:100%;">
@@ -206,13 +213,13 @@ function renderPhotoState(container, projectId, taskId) {
 
   container.querySelector('#btn-save').addEventListener('click', () => {
     const note = container.querySelector('#note-input').value.trim() || null
-    saveLog(container, { projectId, taskId, type: 'photo', note })
+    saveLog(container, { projectId, taskId, type: 'photo', note, returnTo })
   })
 }
 
 // ─── NOTE STATE ─────────────────────────────────────────────
 
-function renderNoteState(container, projectId, taskId) {
+function renderNoteState(container, projectId, taskId, returnTo) {
   const body = container.querySelector('#log-body')
   body.innerHTML = `
     <div style="
@@ -239,13 +246,13 @@ function renderNoteState(container, projectId, taskId) {
   container.querySelector('#btn-save').addEventListener('click', () => {
     const note = container.querySelector('#note-input').value.trim()
     if (!note) { showToast(container, 'Skriv en note først', true); return }
-    saveLog(container, { projectId, taskId, type: 'note', note })
+    saveLog(container, { projectId, taskId, type: 'note', note, returnTo })
   })
 }
 
 // ─── SAVE ────────────────────────────────────────────────────
 
-async function saveLog(container, { projectId, taskId, type, note }) {
+async function saveLog(container, { projectId, taskId, type, note, returnTo }) {
   if (_saving) return
   _saving = true
 
@@ -268,7 +275,8 @@ async function saveLog(container, { projectId, taskId, type, note }) {
     if (_photoPreview) { URL.revokeObjectURL(_photoPreview); _photoPreview = null }
 
     // Navigate back with success signal
-    window.navigate('project-view', { projectId, _logSaved: true })
+    if (returnTo === 'home') window.navigate('home')
+    else window.navigate('project-view', { projectId, _logSaved: true })
 
   } catch (err) {
     console.error('Gem log fejlede:', err)
