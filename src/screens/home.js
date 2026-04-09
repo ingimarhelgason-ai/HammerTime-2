@@ -142,13 +142,15 @@ function renderHeroArea(container) {
     return
   }
 
+  const addr     = escapeHtml(active.projectAddr || '')
+  const taskName = escapeHtml(active.taskName || 'Unavngivet opgave')
+
   area.innerHTML = `
     <div class="active-task-hero">
-      <div class="active-task-meta">
-        <span class="active-task-project">${escapeHtml(active.projectAddr)}</span>
-        <span class="active-badge">Aktiv</span>
+      <div class="active-task-breadcrumb">
+        <span class="active-task-crumb">${addr}${addr ? ' → ' : ''}${taskName}</span>
+        <button class="btn-skift-link" id="btn-switch-task">skift</button>
       </div>
-      <div class="active-task-name">${escapeHtml(active.taskName || 'Unavngivet opgave')}</div>
       <button class="btn-hero-camera" id="btn-hero-log">
         <div class="hero-camera-circle">
           ${iconCameraLg()}
@@ -159,19 +161,16 @@ function renderHeroArea(container) {
         ${iconNote()}
         Bare en note
       </button>
-      <button class="btn-switch-task" id="btn-switch-task">
-        ${iconSwap()}
-        Skift opgave
-      </button>
     </div>
   `
 
   area.querySelector('#btn-hero-log').addEventListener('click', () => {
     window.navigate('log', {
-      projectId: active.projectId,
-      taskId:    active.taskId,
-      taskName:  active.taskName,
-      returnTo:  'home'
+      projectId:   active.projectId,
+      taskId:      active.taskId,
+      taskName:    active.taskName,
+      returnTo:    'home',
+      autoCamera:  true
     })
   })
 

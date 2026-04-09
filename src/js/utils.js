@@ -44,7 +44,7 @@ export function relativeDate(ts) {
 // ─── IMAGE COMPRESSION ──────────────────────────────────────
 
 /**
- * Compress an image File to max 1400px longest side, JPEG at 0.82 quality.
+ * Compress an image File to max 1200px longest side, JPEG at 0.75 quality.
  * Returns a Blob.
  */
 export function compressImage(file) {
@@ -53,7 +53,7 @@ export function compressImage(file) {
     const url = URL.createObjectURL(file)
     img.onload = () => {
       URL.revokeObjectURL(url)
-      const MAX = 1400
+      const MAX = 1200
       let { width, height } = img
       if (width > MAX || height > MAX) {
         if (width > height) { height = Math.round(height * MAX / width); width = MAX }
@@ -62,8 +62,14 @@ export function compressImage(file) {
       const canvas = document.createElement('canvas')
       canvas.width = width
       canvas.height = height
-      canvas.getContext('2d').drawImage(img, 0, 0, width, height)
-      canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Komprimering fejlede')), 'image/jpeg', 0.82)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) { reject(new Error('Kan ikke oprette canvas')); return }
+      ctx.drawImage(img, 0, 0, width, height)
+      canvas.toBlob(
+        blob => blob ? resolve(blob) : reject(new Error('Billedkomprimering fejlede — prøv igen')),
+        'image/jpeg',
+        0.75
+      )
     }
     img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Kan ikke læse billede')) }
     img.src = url

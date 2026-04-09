@@ -7,6 +7,8 @@ import { getActive, setActive, updateActiveStatus } from '../js/activeTask.js'
 let _unsubTasks = null
 let _unsubLogs  = null
 let _taskMap    = {}   // taskId → task name, for log feed labels
+let _logFilter  = null // taskId | null (null = all logs)
+let _allLogs    = []   // full log list for filter re-renders
 
 // ─── LIFECYCLE ──────────────────────────────────────────────
 
@@ -78,7 +80,9 @@ export async function render(container, params = {}) {
 export function destroy() {
   if (_unsubTasks) { _unsubTasks(); _unsubTasks = null }
   if (_unsubLogs)  { _unsubLogs();  _unsubLogs  = null }
-  _taskMap = {}
+  _taskMap   = {}
+  _logFilter = null
+  _allLogs   = []
 }
 
 // ─── SHELL ──────────────────────────────────────────────────
@@ -137,7 +141,7 @@ function buildShell() {
       <div class="fab-area">
         <button class="btn-primary" id="btn-log-general">
           ${iconCamera()}
-          Log foto eller note
+          Generelt foto
         </button>
       </div>
       <div id="toast-area"></div>
@@ -306,6 +310,7 @@ function statusClass(status) {
 // ─── LOG FEED ────────────────────────────────────────────────
 
 function renderLogFeed(container, logs) {
+  _allLogs = logs
   const feed    = container.querySelector('#log-feed')
   const countEl = container.querySelector('#logs-count')
   if (!feed) return
@@ -322,7 +327,50 @@ function renderLogFeed(container, logs) {
     return
   }
 
-  feed.innerHTML = logs.map(log => buildLogCard(log)).join('')
+  // Build filter pills from tasks that appear in logs
+  const taskIdsInLogs = [...new Set(logs.map(l => l.taskId).filter(Boolean))]
+  const showFilter = taskIdsInLogs.length > 0
+
+  feed.innerHTML = `
+    ${showFilter ? `<div class="log-filter-row" id="log-filter-row">
+      <button class="log-filter-pill${_logFilter === null ? ' active' : ''}" data-filter="">Alle</button>
+      ${taskIdsInLogs.map(tid => {
+        const name = _taskMap[tid] || 'Ukendt opgave'
+        return `<button class="log-filter-pill${_logFilter === tid ? ' active' : ''}" data-filter="${escapeAttr(tid)}">${escapeHtml(name)}</button>`
+      }).join('')}
+    </div>` : ''}
+    <div id="log-cards"></div>
+  `
+
+  if (showFilter) {
+    feed.querySelectorAll('.log-filter-pill').forEach(pill => {
+      pill.addEventListener('click', () => {
+        _logFilter = pill.dataset.filter || null
+        renderFilteredLogs(feed)
+        // Update pill active state
+        feed.querySelectorAll('.log-filter-pill').forEach(p => {
+          p.classList.toggle('active', p.dataset.filter === (pill.dataset.filter))
+        })
+      })
+    })
+  }
+
+  renderFilteredLogs(feed)
+}
+
+function renderFilteredLogs(feed) {
+  const cards = feed.querySelector('#log-cards')
+  if (!cards) return
+  const filtered = _logFilter ? _allLogs.filter(l => l.taskId === _logFilter) : _allLogs
+  if (filtered.length === 0) {
+    cards.innerHTML = `
+      <div class="empty-state" style="padding:24px;">
+        <div class="empty-title">Ingen logs for denne opgave</div>
+      </div>
+    `
+  } else {
+    cards.innerHTML = filtered.map(log => buildLogCard(log)).join('')
+  }
 }
 
 function buildLogCard(log) {

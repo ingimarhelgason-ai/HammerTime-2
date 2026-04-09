@@ -9,34 +9,40 @@ import {
 
 // ─── STATE ──────────────────────────────────────────────────
 
-let _photoBlob   = null
+let _photoBlob    = null
 let _photoPreview = null
-let _mode        = 'initial' // 'initial' | 'photo' | 'note'
-let _saving      = false
+let _mode         = 'initial' // 'initial' | 'photo' | 'note'
+let _saving       = false
 
 // ─── LIFECYCLE ──────────────────────────────────────────────
 
 export function render(container, params = {}) {
-  const { projectId, taskId = null, taskName = null, returnTo = null, noteOnly = false } = params
+  const {
+    projectId,
+    taskId     = null,
+    taskName   = null,
+    returnTo   = null,
+    noteOnly   = false,
+    autoCamera = false
+  } = params
   if (!projectId) { window.navigate('home'); return }
 
-  // Reset state on each render
+  // Reset state
   _photoBlob    = null
   _photoPreview = null
   _mode         = 'initial'
   _saving       = false
 
-  container.innerHTML = buildShell(taskName)
+  container.innerHTML = buildShell(taskName, autoCamera)
 
-  // Back
+  // Back button
   container.querySelector('#btn-back').addEventListener('click', () => {
     if (returnTo === 'home') window.navigate('home')
     else window.navigate('project-view', { projectId })
   })
 
-  // Hidden file input — camera
+  // File input (outside log-body so it survives state transitions)
   const fileInput = container.querySelector('#photo-input')
-  container.querySelector('#btn-camera').addEventListener('click', () => fileInput.click())
 
   fileInput.addEventListener('change', async () => {
     const file = fileInput.files[0]
@@ -48,20 +54,34 @@ export function render(container, params = {}) {
       _mode         = 'photo'
       renderPhotoState(container, projectId, taskId, returnTo)
     } catch (err) {
-      showToast(container, 'Kan ikke læse billede', true)
+      showToast(container, err.message || 'Kan ikke læse billede', true)
+      // If in autoCamera mode and compression failed, show initial state
+      if (autoCamera && _mode === 'initial') renderInitialState(container, projectId, taskId, returnTo)
     }
   })
 
-  // Note-only path
-  container.querySelector('#btn-note-only').addEventListener('click', () => {
-    _mode = 'note'
-    renderNoteState(container, projectId, taskId, returnTo)
-  })
-
-  // Jump directly to note state if requested
   if (noteOnly) {
+    // Go straight to note entry
     _mode = 'note'
     renderNoteState(container, projectId, taskId, returnTo)
+  } else if (autoCamera) {
+    // Trigger camera immediately — show a minimal waiting state
+    // If user cancels (no file), fileInput.change won't fire; back button handles it
+    fileInput.click()
+    // After a camera dismiss without selection, re-show initial state
+    // We use visibilitychange as the trigger (camera closes → page becomes visible)
+    const onVisible = () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      setTimeout(() => {
+        if (_mode === 'initial' && !_photoBlob) {
+          renderInitialState(container, projectId, taskId, returnTo)
+        }
+      }, 400)
+    }
+    document.addEventListener('visibilitychange', onVisible)
+  } else {
+    // Normal: show initial choice screen
+    renderInitialState(container, projectId, taskId, returnTo)
   }
 }
 
@@ -71,7 +91,7 @@ export function destroy() {
 
 // ─── SHELL ──────────────────────────────────────────────────
 
-function buildShell(taskName) {
+function buildShell(taskName, autoCamera) {
   return `
     <div class="screen" id="log-screen">
       <div class="top-bar">
@@ -80,12 +100,11 @@ function buildShell(taskName) {
         </button>
         <div class="top-bar-title">
           <h1 style="font-size:17px;">${taskName ? escapeHtml(taskName) : 'Log'}</h1>
-          ${taskName ? '' : ''}
         </div>
       </div>
 
       <div class="screen-body" id="log-body">
-        ${buildInitialState()}
+        ${autoCamera ? '' : ''}
       </div>
 
       <input id="photo-input" type="file" accept="image/*" capture="environment"
@@ -96,55 +115,34 @@ function buildShell(taskName) {
   `
 }
 
-function buildInitialState() {
-  return `
+// ─── INITIAL STATE ──────────────────────────────────────────
+
+function renderInitialState(container, projectId, taskId, returnTo) {
+  const body = container.querySelector('#log-body')
+  body.innerHTML = `
     <div id="initial-state" style="
-      display:flex;
-      flex-direction:column;
-      align-items:center;
-      justify-content:center;
-      height:100%;
-      gap:24px;
-      padding:32px 24px;
+      display:flex;flex-direction:column;align-items:center;justify-content:center;
+      height:100%;gap:24px;padding:32px 24px;
     ">
       <button id="btn-camera" style="
-        display:flex;
-        flex-direction:column;
-        align-items:center;
-        justify-content:center;
-        gap:16px;
-        width:100%;
-        flex:1;
-        max-height:300px;
-        background:var(--surface);
-        border:1px solid var(--border2);
-        border-radius:var(--radius);
-        color:var(--text2);
-        cursor:pointer;
-        transition:background 0.15s, border-color 0.15s;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        gap:16px;width:100%;flex:1;max-height:300px;
+        background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius);
+        color:var(--text2);cursor:pointer;transition:background 0.15s,border-color 0.15s;
       " aria-label="Tag foto">
         <div style="
-          width:72px;height:72px;
-          background:var(--accent-dim);
-          border:1.5px solid var(--accent-rim);
-          border-radius:50%;
-          display:flex;align-items:center;justify-content:center;
-          color:var(--accent);
-        ">
-          ${iconCameraLg()}
-        </div>
+          width:72px;height:72px;background:var(--accent-dim);
+          border:1.5px solid var(--accent-rim);border-radius:50%;
+          display:flex;align-items:center;justify-content:center;color:var(--accent);
+        ">${iconCameraLg()}</div>
         <span style="font-size:18px;font-weight:600;letter-spacing:-0.3px;">Tag foto</span>
       </button>
 
       <button id="btn-note-only" style="
         display:flex;align-items:center;justify-content:center;gap:8px;
-        width:100%;padding:16px;
-        background:var(--surface);
-        border:0.5px solid var(--border);
-        border-radius:var(--radius);
-        color:var(--text2);
-        font-size:15px;font-weight:500;
-        cursor:pointer;
+        width:100%;padding:16px;background:var(--surface);
+        border:0.5px solid var(--border);border-radius:var(--radius);
+        color:var(--text2);font-size:15px;font-weight:500;cursor:pointer;
         transition:background 0.15s;
       " aria-label="Skriv note">
         ${iconNote()}
@@ -152,6 +150,13 @@ function buildInitialState() {
       </button>
     </div>
   `
+
+  const fileInput = container.querySelector('#photo-input')
+  body.querySelector('#btn-camera').addEventListener('click', () => fileInput.click())
+  body.querySelector('#btn-note-only').addEventListener('click', () => {
+    _mode = 'note'
+    renderNoteState(container, projectId, taskId, returnTo)
+  })
 }
 
 // ─── PHOTO STATE ────────────────────────────────────────────
@@ -167,46 +172,33 @@ function renderPhotoState(container, projectId, taskId, returnTo) {
         <button id="btn-retake" style="
           position:absolute;top:12px;right:12px;
           display:flex;align-items:center;gap:6px;
-          padding:8px 14px;
-          background:rgba(0,0,0,0.6);
-          border:0.5px solid rgba(255,255,255,0.2);
-          border-radius:20px;
-          color:var(--text);
-          font-size:13px;
-          cursor:pointer;
+          padding:8px 14px;background:rgba(0,0,0,0.6);
+          border:0.5px solid rgba(255,255,255,0.2);border-radius:20px;
+          color:var(--text);font-size:13px;cursor:pointer;
         " aria-label="Tag om">
           ${iconCamera()}
           Tag om
         </button>
       </div>
-
       <div style="
-        padding:14px 18px;
-        padding-bottom:max(14px, env(safe-area-inset-bottom));
+        padding:14px 18px;padding-bottom:max(14px,env(safe-area-inset-bottom));
         display:flex;flex-direction:column;gap:10px;
-        background:var(--bg);
-        border-top:0.5px solid var(--border);
-        flex-shrink:0;
+        background:var(--bg);border-top:0.5px solid var(--border);flex-shrink:0;
       ">
-        <textarea id="note-input"
-          class="form-textarea"
-          placeholder="Tilføj note (valgfrit)…"
-          rows="3"
-          style="min-height:0;resize:none;"
-        ></textarea>
-        <button id="btn-save" class="btn-primary" style="font-size:17px;padding:17px;">
-          Gem
-        </button>
+        <textarea id="note-input" class="form-textarea"
+          placeholder="Tilføj note (valgfrit)…" rows="3"
+          style="min-height:0;resize:none;"></textarea>
+        <button id="btn-save" class="btn-primary" style="font-size:17px;padding:17px;">Gem</button>
       </div>
     </div>
   `
 
-  // Re-attach camera input since we rebuilt the body
   const fileInput = container.querySelector('#photo-input')
 
   container.querySelector('#btn-retake').addEventListener('click', () => {
     if (_photoPreview) { URL.revokeObjectURL(_photoPreview); _photoPreview = null }
     _photoBlob = null
+    _mode = 'initial'
     fileInput.value = ''
     fileInput.click()
   })
@@ -224,23 +216,16 @@ function renderNoteState(container, projectId, taskId, returnTo) {
   body.innerHTML = `
     <div style="
       display:flex;flex-direction:column;height:100%;
-      padding:18px;
-      padding-bottom:max(18px, env(safe-area-inset-bottom));
-      gap:14px;
+      padding:18px;padding-bottom:max(18px,env(safe-area-inset-bottom));gap:14px;
     ">
-      <textarea id="note-input"
-        class="form-textarea"
+      <textarea id="note-input" class="form-textarea"
         placeholder="Hvad skete der?…"
         style="flex:1;resize:none;min-height:0;font-size:17px;line-height:1.6;"
-        autofocus
-      ></textarea>
-      <button id="btn-save" class="btn-primary" style="font-size:17px;padding:17px;flex-shrink:0;">
-        Gem
-      </button>
+        autofocus></textarea>
+      <button id="btn-save" class="btn-primary" style="font-size:17px;padding:17px;flex-shrink:0;">Gem</button>
     </div>
   `
 
-  // Auto-focus
   setTimeout(() => container.querySelector('#note-input')?.focus(), 50)
 
   container.querySelector('#btn-save').addEventListener('click', () => {
@@ -263,24 +248,30 @@ async function saveLog(container, { projectId, taskId, type, note, returnTo }) {
     let photoUrl = null
 
     if (type === 'photo' && _photoBlob) {
-      const filename = `${Date.now()}.jpg`
+      const filename   = `${Date.now()}.jpg`
       const storageRef = ref(storage, `photos/${projectId}/${filename}`)
-      await uploadBytes(storageRef, _photoBlob, { contentType: 'image/jpeg' })
-      photoUrl = await getDownloadURL(storageRef)
+      try {
+        await uploadBytes(storageRef, _photoBlob, { contentType: 'image/jpeg' })
+        photoUrl = await getDownloadURL(storageRef)
+      } catch (uploadErr) {
+        console.error('Upload fejlede:', uploadErr)
+        const msg = uploadErr?.code === 'storage/unauthorized'
+          ? 'Ingen adgang til at uploade — tjek Firebase-regler'
+          : 'Foto kunne ikke uploades — tjek din internetforbindelse'
+        throw new Error(msg)
+      }
     }
 
     await addLog({ projectId, taskId, type, photoUrl, note })
 
-    // Clean up object URL
     if (_photoPreview) { URL.revokeObjectURL(_photoPreview); _photoPreview = null }
 
-    // Navigate back with success signal
     if (returnTo === 'home') window.navigate('home')
     else window.navigate('project-view', { projectId, _logSaved: true })
 
   } catch (err) {
     console.error('Gem log fejlede:', err)
-    showToast(container, 'Kunne ikke gemme — prøv igen', true)
+    showToast(container, err.message || 'Kunne ikke gemme — prøv igen', true)
     _saving = false
     if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Gem' }
   }
@@ -297,7 +288,7 @@ function showToast(container, message, isError = false) {
   area.innerHTML = ''
   area.appendChild(toast)
   requestAnimationFrame(() => { requestAnimationFrame(() => { toast.classList.add('show') }) })
-  setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300) }, 2500)
+  setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300) }, 3500)
 }
 
 // ─── HELPERS ────────────────────────────────────────────────
