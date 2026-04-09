@@ -121,12 +121,12 @@ function buildShell() {
         <div class="safe-bottom"></div>
       </div>
 
-      <!-- Task picker bottom sheet -->
+      <!-- Picker bottom sheet (project or task) -->
       <div class="sheet-overlay" id="sheet-overlay">
         <div class="sheet" id="task-picker-sheet">
           <div class="sheet-handle"></div>
           <div class="sheet-header">
-            <span class="sheet-title">Vælg opgave</span>
+            <span class="sheet-title" id="sheet-title">Vælg projekt</span>
             <button class="btn-icon sheet-close" id="btn-sheet-close" aria-label="Luk">
               ${iconClose()}
             </button>
@@ -148,27 +148,42 @@ function renderHero(container) {
   if (!active) {
     area.innerHTML = `
       <div class="home-hero home-hero-empty">
-        <div class="home-hero-empty-text">Ingen aktiv opgave</div>
-        <button class="btn-primary" id="btn-pick-task">
-          ${iconSwap()}
-          Vælg opgave
+        <button class="hero-selector-btn" id="btn-pick-project">
+          <div class="hero-selector-content">
+            <div class="hero-selector-label">Projekt</div>
+            <div class="hero-selector-value" style="color:var(--text2);">Vælg projekt…</div>
+          </div>
+          <div class="hero-selector-chevron">${iconChevronRight()}</div>
+        </button>
+        <button class="hero-selector-btn" id="btn-pick-task" disabled style="opacity:0.4;">
+          <div class="hero-selector-content">
+            <div class="hero-selector-label">Opgave</div>
+            <div class="hero-selector-value" style="color:var(--text2);">Vælg opgave…</div>
+          </div>
+          <div class="hero-selector-chevron">${iconChevronRight()}</div>
         </button>
       </div>
     `
-    area.querySelector('#btn-pick-task').addEventListener('click', () => openTaskPicker(container))
+    area.querySelector('#btn-pick-project').addEventListener('click', () => openProjectPicker(container))
     return
   }
 
-  const addr     = escapeHtml(active.projectAddr || '')
-  const taskName = escapeHtml(active.taskName    || 'Unavngivet opgave')
-
   area.innerHTML = `
     <div class="home-hero">
-      <div class="home-hero-top" id="hero-tap-area">
-        <div class="home-hero-project">${addr}</div>
-        <div class="home-hero-task">${taskName}</div>
-        <button class="btn-skift-link" id="btn-switch-task">skift</button>
-      </div>
+      <button class="hero-selector-btn" id="btn-pick-project">
+        <div class="hero-selector-content">
+          <div class="hero-selector-label">Projekt</div>
+          <div class="hero-selector-value">${escapeHtml(active.projectAddr || 'Ukendt projekt')}</div>
+        </div>
+        <div class="hero-selector-chevron">${iconChevronRight()}</div>
+      </button>
+      <button class="hero-selector-btn" id="btn-pick-task">
+        <div class="hero-selector-content">
+          <div class="hero-selector-label">Opgave</div>
+          <div class="hero-selector-value">${escapeHtml(active.taskName || 'Unavngivet opgave')}</div>
+        </div>
+        <div class="hero-selector-chevron">${iconChevronRight()}</div>
+      </button>
       <div class="home-hero-actions">
         <button class="btn-hero-camera" id="btn-hero-log">
           <div class="hero-camera-circle">${iconCameraLg()}</div>
@@ -182,13 +197,8 @@ function renderHero(container) {
     </div>
   `
 
-  area.querySelector('#hero-tap-area').addEventListener('click', e => {
-    // Don't double-fire if skift button itself was clicked
-    if (e.target.closest('#btn-switch-task')) return
-    openTaskPicker(container)
-  })
-
-  area.querySelector('#btn-switch-task').addEventListener('click', () => openTaskPicker(container))
+  area.querySelector('#btn-pick-project').addEventListener('click', () => openProjectPicker(container))
+  area.querySelector('#btn-pick-task').addEventListener('click', () => openTaskPickerForProject(container, active.projectId))
 
   area.querySelector('#btn-hero-log').addEventListener('click', () => {
     window.navigate('log', {
@@ -270,18 +280,28 @@ function buildFeedCard(log) {
   `
 }
 
-// ─── TASK PICKER SHEET ──────────────────────────────────────
+// ─── PICKER SHEET ───────────────────────────────────────────
 
-function openTaskPicker(container) {
+function openSheet(container, title) {
   const overlay = container.querySelector('#sheet-overlay')
   const body    = container.querySelector('#sheet-body')
-  if (!overlay) return
+  const titleEl = container.querySelector('#sheet-title')
+  if (!overlay) return null
 
+  if (titleEl) titleEl.textContent = title
   overlay.classList.add('open')
   body.innerHTML = '<div class="empty-state" style="padding:40px 0;"><div class="spinner"></div></div>'
 
-  overlay.onclick   = e => { if (e.target === overlay) closeSheet(container) }
+  overlay.onclick = e => { if (e.target === overlay) closeSheet(container) }
   container.querySelector('#btn-sheet-close').onclick = () => closeSheet(container)
+
+  return body
+}
+
+// Opens full project list — tap a project to expand its tasks and pick one
+function openProjectPicker(container) {
+  const body = openSheet(container, 'Vælg projekt')
+  if (!body) return
 
   const activeProjects = _projects.filter(p => p.status === 'active')
 
@@ -295,48 +315,80 @@ function openTaskPicker(container) {
     return
   }
 
-  renderPickerProjects(container, body, activeProjects)
+  renderPickerProjects(container, body, activeProjects, null)
+}
+
+// Opens the sheet pre-expanded to a specific project's tasks
+async function openTaskPickerForProject(container, projectId) {
+  const body = openSheet(container, 'Vælg opgave')
+  if (!body) return
+
+  const activeProjects = _projects.filter(p => p.status === 'active')
+
+  if (activeProjects.length === 0) {
+    body.innerHTML = `
+      <div class="empty-state" style="padding:40px 0;">
+        <div class="empty-title">Ingen aktive projekter</div>
+      </div>
+    `
+    return
+  }
+
+  renderPickerProjects(container, body, activeProjects, projectId)
 }
 
 function closeSheet(container) {
   container.querySelector('#sheet-overlay')?.classList.remove('open')
 }
 
-function renderPickerProjects(container, body, projects) {
+function renderPickerProjects(container, body, projects, preExpandId) {
   body.innerHTML = projects.map(p => `
     <div class="picker-project" data-id="${escapeAttr(p.id)}">
       <div class="picker-project-header">
         <span class="picker-project-addr">${escapeHtml(p.address || 'Ukendt adresse')}</span>
-        <span class="picker-chevron" id="chevron-${escapeAttr(p.id)}">${iconChevron()}</span>
+        <span class="picker-chevron">${iconChevron()}</span>
       </div>
       <div class="picker-tasks" id="picker-tasks-${escapeAttr(p.id)}"></div>
     </div>
   `).join('')
 
+  const expandProject = async (el) => {
+    const projectId = el.dataset.id
+    const tasksEl   = body.querySelector(`#picker-tasks-${CSS.escape(projectId)}`)
+
+    body.querySelectorAll('.picker-project').forEach(p => {
+      p.classList.remove('expanded')
+      body.querySelector(`#picker-tasks-${CSS.escape(p.dataset.id)}`).innerHTML = ''
+    })
+
+    el.classList.add('expanded')
+    tasksEl.innerHTML = `<div style="padding:8px 16px;"><div class="spinner" style="width:18px;height:18px;border-width:2px;"></div></div>`
+    try {
+      const tasks   = await getTasks(projectId)
+      const project = _projects.find(p => p.id === projectId)
+      renderPickerTasks(container, tasksEl, tasks, project)
+    } catch {
+      tasksEl.innerHTML = `<div style="padding:10px 16px;font-size:13px;color:var(--danger);">Kunne ikke hente opgaver</div>`
+    }
+  }
+
   body.querySelectorAll('.picker-project').forEach(el => {
     el.querySelector('.picker-project-header').addEventListener('click', async () => {
-      const projectId = el.dataset.id
-      const tasksEl   = body.querySelector(`#picker-tasks-${CSS.escape(projectId)}`)
-      const isOpen    = el.classList.contains('expanded')
-
-      body.querySelectorAll('.picker-project').forEach(p => {
-        p.classList.remove('expanded')
-        body.querySelector(`#picker-tasks-${CSS.escape(p.dataset.id)}`).innerHTML = ''
-      })
-
-      if (!isOpen) {
-        el.classList.add('expanded')
-        tasksEl.innerHTML = `<div style="padding:8px 16px;"><div class="spinner" style="width:18px;height:18px;border-width:2px;"></div></div>`
-        try {
-          const tasks   = await getTasks(projectId)
-          const project = _projects.find(p => p.id === projectId)
-          renderPickerTasks(container, tasksEl, tasks, project)
-        } catch {
-          tasksEl.innerHTML = `<div style="padding:10px 16px;font-size:13px;color:var(--danger);">Kunne ikke hente opgaver</div>`
-        }
+      if (el.classList.contains('expanded')) {
+        // Collapse
+        el.classList.remove('expanded')
+        body.querySelector(`#picker-tasks-${CSS.escape(el.dataset.id)}`).innerHTML = ''
+      } else {
+        await expandProject(el)
       }
     })
   })
+
+  // Auto-expand a specific project if requested
+  if (preExpandId) {
+    const target = body.querySelector(`.picker-project[data-id="${CSS.escape(preExpandId)}"]`)
+    if (target) expandProject(target)
+  }
 }
 
 function renderPickerTasks(container, el, tasks, project) {
@@ -446,6 +498,10 @@ function iconSwap() {
 
 function iconChevron() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M9 18l6-6-6-6"/></svg>`
+}
+
+function iconChevronRight() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18"><path d="M9 18l6-6-6-6"/></svg>`
 }
 
 function iconClose() {

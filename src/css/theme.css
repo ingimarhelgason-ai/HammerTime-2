@@ -928,57 +928,78 @@ html, body {
 
 /* ─── HOME HERO ─── */
 .home-hero {
-  padding: 16px 16px 20px;
+  padding: 12px 14px 18px;
   border-bottom: 0.5px solid var(--border);
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 8px;
 }
 
-.home-hero-top {
+.home-hero-empty {
+  gap: 8px;
+}
+
+/* ─── HERO SELECTOR BUTTONS ─── */
+.hero-selector-btn {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--surface);
+  border: 0.5px solid var(--border2);
+  border-radius: var(--radius);
   cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
   -webkit-tap-highlight-color: transparent;
 }
 
-.home-hero-project {
-  font-size: 13px;
-  color: var(--text2);
-  letter-spacing: -0.1px;
-  line-height: 1.3;
+.hero-selector-btn:active {
+  background: var(--surface2);
 }
 
-.home-hero-task {
-  font-size: 24px;
+.hero-selector-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.hero-selector-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  font-family: var(--mono);
+  color: var(--text3);
+}
+
+.hero-selector-value {
+  font-size: 18px;
   font-weight: 700;
-  letter-spacing: -0.5px;
+  letter-spacing: -0.4px;
   line-height: 1.2;
   color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.btn-skift-link {
-  align-self: flex-start;
-  font-size: 11px;
-  font-weight: 600;
-  font-family: var(--mono);
+.hero-selector-chevron {
   color: var(--accent);
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  padding: 0;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  transition: opacity 0.15s;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
 }
 
-.btn-skift-link:active { opacity: 0.6; }
-
+/* ─── HERO ACTIONS ─── */
 .home-hero-actions {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
+  padding-top: 4px;
 }
 
 .btn-hero-camera {
@@ -1019,18 +1040,6 @@ html, body {
   width: 100%;
   justify-content: center;
   font-size: 14px;
-}
-
-/* ─── HOME HERO — NO ACTIVE TASK ─── */
-.home-hero-empty {
-  align-items: center;
-  text-align: center;
-  gap: 12px;
-}
-
-.home-hero-empty-text {
-  font-size: 15px;
-  color: var(--text2);
 }
 
 /* ─── FEED CARDS ─── */
