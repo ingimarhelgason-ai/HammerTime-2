@@ -4,6 +4,7 @@ import {
   query,
   where,
   orderBy,
+  limit,
   onSnapshot,
   addDoc,
   updateDoc,
@@ -157,6 +158,21 @@ export function subscribeToLogs(projectId, callback) {
   return onSnapshot(q, snapshot => {
     const logs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
     callback(logs)
+  })
+}
+
+/**
+ * Subscribe to the N most recent logs across all projects, newest first.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToRecentLogs(limitCount, callback) {
+  const q = query(
+    collection(db, 'logs'),
+    orderBy('timestamp', 'desc'),
+    limit(limitCount)
+  )
+  return onSnapshot(q, snapshot => {
+    callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() })))
   })
 }
 

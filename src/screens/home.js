@@ -1,46 +1,69 @@
-import { subscribeToProjects, getTasks, updateTask } from '../js/api.js'
-import { formatDayFull, formatDateShort, relativeDate } from '../js/utils.js'
+import { subscribeToProjects, subscribeToRecentLogs, getTask, getTasks, updateTask } from '../js/api.js'
+import { formatDayFull, formatTimestamp, relativeDate } from '../js/utils.js'
 import { getApiKey } from '../js/claude.js'
 import { getActive, setActive, clearActive } from '../js/activeTask.js'
 
-let _unsubscribe = null
-let _projects    = []
+let _unsubProjects = null
+let _unsubLogs     = null
+let _projects      = []   // full list for task picker + project name lookup
+let _projectMap    = {}   // projectId → address
+let _taskCache     = {}   // taskId → name (populated lazily from log feed)
 
 // ─── LIFECYCLE ──────────────────────────────────────────────
 
 export function render(container) {
   container.innerHTML = buildShell()
 
-  container.querySelector('#btn-new-project').addEventListener('click', () => {
-    window.navigate('project-new')
-  })
   container.querySelector('#btn-settings').addEventListener('click', () => {
     window.navigate('settings')
   })
+  container.querySelector('#btn-new-project').addEventListener('click', () => {
+    window.navigate('project-new')
+  })
+
   const banner = container.querySelector('#api-key-banner')
   if (banner) banner.addEventListener('click', () => window.navigate('settings'))
 
-  renderHeroArea(container)
+  renderHero(container)
 
-  _unsubscribe = subscribeToProjects(projects => {
-    _projects = projects
-    renderProjectList(container, projects)
+  // Projects subscription — used for task picker + project name map
+  _unsubProjects = subscribeToProjects(projects => {
+    _projects   = projects
+    _projectMap = Object.fromEntries(projects.map(p => [p.id, p.address || 'Ukendt adresse']))
 
-    // If the active project was deleted or completed, clear active state
+    // Invalidate active state if project was removed/completed
     const active = getActive()
     if (active) {
       const proj = projects.find(p => p.id === active.projectId && p.status === 'active')
-      if (!proj) {
-        clearActive()
-        renderHeroArea(container)
-      }
+      if (!proj) { clearActive(); renderHero(container) }
     }
+  })
+
+  // Recent logs feed subscription
+  _unsubLogs = subscribeToRecentLogs(20, async logs => {
+    // Fetch task names for any taskIds not yet in cache
+    const unknownIds = [...new Set(logs.map(l => l.taskId).filter(Boolean))]
+      .filter(id => !_taskCache[id])
+
+    if (unknownIds.length > 0) {
+      await Promise.all(unknownIds.map(async id => {
+        try {
+          const t = await getTask(id)
+          if (t) _taskCache[id] = t.name || 'Unavngivet opgave'
+        } catch { /* ignore */ }
+      }))
+    }
+
+    renderFeed(container, logs)
   })
 }
 
 export function destroy() {
-  if (_unsubscribe) { _unsubscribe(); _unsubscribe = null }
-  _projects = []
+  if (_unsubProjects) { _unsubProjects(); _unsubProjects = null }
+  if (_unsubLogs)     { _unsubLogs();     _unsubLogs     = null }
+  _projects   = []
+  _projectMap = {}
+  _taskCache  = {}
 }
 
 // ─── SHELL ──────────────────────────────────────────────────
@@ -51,9 +74,12 @@ function buildShell() {
       <div class="top-bar">
         <div class="top-bar-title">
           <h1>Hammer Time</h1>
-          <div class="subtitle" id="home-date">${formatDayFull()}</div>
+          <div class="subtitle">${formatDayFull()}</div>
         </div>
         <div class="top-bar-actions">
+          <button class="btn-icon" id="btn-new-project" aria-label="Nyt projekt" title="Nyt projekt">
+            ${iconPlus()}
+          </button>
           <button class="btn-icon" id="btn-settings" aria-label="Indstillinger">
             ${iconSettings()}
           </button>
@@ -62,8 +88,8 @@ function buildShell() {
 
       ${!getApiKey() ? `
         <div id="api-key-banner" style="
-          margin: 12px 14px 0;
-          padding: 12px 14px;
+          margin: 10px 14px 0;
+          padding: 11px 14px;
           background: var(--accent-dim);
           border: 0.5px solid var(--accent-rim);
           border-radius: var(--radius-sm);
@@ -75,29 +101,24 @@ function buildShell() {
           gap: 10px;
           cursor: pointer;
         ">
-          <span>Tilføj Anthropic API-nøgle for at bruge AI</span>
-          <span style="font-size:11px; opacity:0.7;">→ Indstillinger</span>
+          <span>Tilføj Anthropic API-nøgle for AI-funktioner</span>
+          <span style="font-size:11px;opacity:0.7;">→</span>
         </div>
       ` : ''}
 
-      <div class="screen-body">
-        <div id="hero-area" style="padding: 14px 14px 0;"></div>
+      <!-- Hero: fixed above the scroll -->
+      <div id="hero-area"></div>
 
-        <div class="section-header">
-          <span class="section-title">Projekter</span>
-          <span class="section-count" id="projects-count"></span>
+      <!-- Feed: main scrollable content -->
+      <div class="screen-body">
+        <div class="section-header" style="padding-top:18px;">
+          <span class="section-title">Seneste logs</span>
+          <span class="section-count" id="feed-count"></span>
         </div>
-        <div class="list-content" id="projects-list">
+        <div id="feed-list" style="padding: 0 14px; display:flex; flex-direction:column; gap:10px;">
           <div class="empty-state"><div class="spinner"></div></div>
         </div>
         <div class="safe-bottom"></div>
-      </div>
-
-      <div class="fab-area">
-        <button class="btn-primary" id="btn-new-project">
-          ${iconPlus()}
-          Nyt projekt
-        </button>
       </div>
 
       <!-- Task picker bottom sheet -->
@@ -117,60 +138,65 @@ function buildShell() {
   `
 }
 
-// ─── HERO AREA ──────────────────────────────────────────────
+// ─── HERO ───────────────────────────────────────────────────
 
-function renderHeroArea(container) {
-  const area = container.querySelector('#hero-area')
+function renderHero(container) {
+  const area   = container.querySelector('#hero-area')
   if (!area) return
   const active = getActive()
 
   if (!active) {
     area.innerHTML = `
-      <div class="hero-empty">
-        <div class="hero-empty-icon">${iconTaskLg()}</div>
-        <div class="hero-empty-title">Ingen aktiv opgave</div>
-        <div class="hero-empty-body">Vælg et projekt og en opgave for at komme i gang.</div>
-        <button class="btn-primary" id="btn-pick-task" style="margin-top: 4px;">
+      <div class="home-hero home-hero-empty">
+        <div class="home-hero-empty-text">Ingen aktiv opgave</div>
+        <button class="btn-primary" id="btn-pick-task">
           ${iconSwap()}
           Vælg opgave
         </button>
       </div>
     `
-    area.querySelector('#btn-pick-task').addEventListener('click', () => {
-      openTaskPicker(container)
-    })
+    area.querySelector('#btn-pick-task').addEventListener('click', () => openTaskPicker(container))
     return
   }
 
   const addr     = escapeHtml(active.projectAddr || '')
-  const taskName = escapeHtml(active.taskName || 'Unavngivet opgave')
+  const taskName = escapeHtml(active.taskName    || 'Unavngivet opgave')
 
   area.innerHTML = `
-    <div class="active-task-hero">
-      <div class="active-task-breadcrumb">
-        <span class="active-task-crumb">${addr}${addr ? ' → ' : ''}${taskName}</span>
+    <div class="home-hero">
+      <div class="home-hero-top" id="hero-tap-area">
+        <div class="home-hero-project">${addr}</div>
+        <div class="home-hero-task">${taskName}</div>
         <button class="btn-skift-link" id="btn-switch-task">skift</button>
       </div>
-      <button class="btn-hero-camera" id="btn-hero-log">
-        <div class="hero-camera-circle">
-          ${iconCameraLg()}
-        </div>
-        <span>Log foto</span>
-      </button>
-      <button class="btn-ghost btn-hero-note" id="btn-hero-note">
-        ${iconNote()}
-        Bare en note
-      </button>
+      <div class="home-hero-actions">
+        <button class="btn-hero-camera" id="btn-hero-log">
+          <div class="hero-camera-circle">${iconCameraLg()}</div>
+          <span>Log foto</span>
+        </button>
+        <button class="btn-ghost btn-hero-note" id="btn-hero-note">
+          ${iconNote()}
+          Bare en note
+        </button>
+      </div>
     </div>
   `
 
+  area.querySelector('#hero-tap-area').addEventListener('click', e => {
+    // Don't double-fire if skift button itself was clicked
+    if (e.target.closest('#btn-switch-task')) return
+    openTaskPicker(container)
+  })
+
+  area.querySelector('#btn-switch-task').addEventListener('click', () => openTaskPicker(container))
+
   area.querySelector('#btn-hero-log').addEventListener('click', () => {
     window.navigate('log', {
-      projectId:   active.projectId,
-      taskId:      active.taskId,
-      taskName:    active.taskName,
-      returnTo:    'home',
-      autoCamera:  true
+      projectId:  active.projectId,
+      taskId:     active.taskId,
+      taskName:   active.taskName,
+      returnTo:   'home',
+      autoCamera: true
     })
   })
 
@@ -183,10 +209,65 @@ function renderHeroArea(container) {
       noteOnly:  true
     })
   })
+}
 
-  area.querySelector('#btn-switch-task').addEventListener('click', () => {
-    openTaskPicker(container)
+// ─── RECENT FEED ────────────────────────────────────────────
+
+function renderFeed(container, logs) {
+  const list    = container.querySelector('#feed-list')
+  const countEl = container.querySelector('#feed-count')
+  if (!list) return
+
+  if (countEl) countEl.textContent = logs.length > 0 ? String(logs.length) : ''
+
+  if (logs.length === 0) {
+    list.innerHTML = `
+      <div class="empty-state" style="padding:40px 0;">
+        <div class="empty-title">Ingen logs endnu</div>
+        <div class="empty-body">Tag et foto eller skriv en note for at komme i gang.</div>
+      </div>
+    `
+    return
+  }
+
+  list.innerHTML = logs.map(log => buildFeedCard(log)).join('')
+
+  // Clicking a feed card navigates to the project
+  list.querySelectorAll('.feed-card[data-project-id]').forEach(card => {
+    card.addEventListener('click', () => {
+      window.navigate('project-view', { projectId: card.dataset.projectId })
+    })
   })
+}
+
+function buildFeedCard(log) {
+  const projectAddr = _projectMap[log.projectId] || ''
+  const taskName    = log.taskId ? (_taskCache[log.taskId] || null) : null
+  const time        = log.timestamp ? formatTimestamp(log.timestamp) : ''
+  const day         = log.timestamp ? relativeDate(log.timestamp)    : ''
+  const timeStr     = day && time ? `${day} · ${time}` : (time || day || '')
+
+  return `
+    <div class="feed-card" data-project-id="${escapeAttr(log.projectId)}">
+      ${log.photoUrl
+        ? `<img class="feed-card-photo" src="${escapeAttr(log.photoUrl)}" alt="Foto" loading="lazy">`
+        : ''}
+      ${log.note
+        ? `<div class="feed-card-note">${escapeHtml(log.note)}</div>`
+        : ''}
+      <div class="feed-card-meta">
+        <div class="feed-card-meta-left">
+          ${taskName
+            ? `<span class="feed-card-task">${escapeHtml(taskName)}</span>`
+            : ''}
+          ${projectAddr
+            ? `<span class="feed-card-project">${escapeHtml(projectAddr)}</span>`
+            : ''}
+        </div>
+        <span class="feed-card-time">${escapeHtml(timeStr)}</span>
+      </div>
+    </div>
+  `
 }
 
 // ─── TASK PICKER SHEET ──────────────────────────────────────
@@ -199,13 +280,12 @@ function openTaskPicker(container) {
   overlay.classList.add('open')
   body.innerHTML = '<div class="empty-state" style="padding:40px 0;"><div class="spinner"></div></div>'
 
-  const closeBtn = container.querySelector('#btn-sheet-close')
-  overlay.onclick = e => { if (e.target === overlay) closeSheet(container) }
-  closeBtn.onclick = () => closeSheet(container)
+  overlay.onclick   = e => { if (e.target === overlay) closeSheet(container) }
+  container.querySelector('#btn-sheet-close').onclick = () => closeSheet(container)
 
-  const active = _projects.filter(p => p.status === 'active')
+  const activeProjects = _projects.filter(p => p.status === 'active')
 
-  if (active.length === 0) {
+  if (activeProjects.length === 0) {
     body.innerHTML = `
       <div class="empty-state" style="padding:40px 0;">
         <div class="empty-title">Ingen aktive projekter</div>
@@ -215,13 +295,11 @@ function openTaskPicker(container) {
     return
   }
 
-  renderPickerProjects(container, body, active)
+  renderPickerProjects(container, body, activeProjects)
 }
 
 function closeSheet(container) {
-  const overlay = container.querySelector('#sheet-overlay')
-  if (!overlay) return
-  overlay.classList.remove('open')
+  container.querySelector('#sheet-overlay')?.classList.remove('open')
 }
 
 function renderPickerProjects(container, body, projects) {
@@ -239,10 +317,8 @@ function renderPickerProjects(container, body, projects) {
     el.querySelector('.picker-project-header').addEventListener('click', async () => {
       const projectId = el.dataset.id
       const tasksEl   = body.querySelector(`#picker-tasks-${CSS.escape(projectId)}`)
-      const chevron   = body.querySelector(`#chevron-${CSS.escape(projectId)}`)
       const isOpen    = el.classList.contains('expanded')
 
-      // Collapse all
       body.querySelectorAll('.picker-project').forEach(p => {
         p.classList.remove('expanded')
         body.querySelector(`#picker-tasks-${CSS.escape(p.dataset.id)}`).innerHTML = ''
@@ -250,17 +326,13 @@ function renderPickerProjects(container, body, projects) {
 
       if (!isOpen) {
         el.classList.add('expanded')
-        tasksEl.innerHTML = `
-          <div style="padding: 8px 16px;">
-            <div class="spinner" style="width:18px;height:18px;border-width:2px;"></div>
-          </div>
-        `
+        tasksEl.innerHTML = `<div style="padding:8px 16px;"><div class="spinner" style="width:18px;height:18px;border-width:2px;"></div></div>`
         try {
           const tasks   = await getTasks(projectId)
           const project = _projects.find(p => p.id === projectId)
           renderPickerTasks(container, tasksEl, tasks, project)
         } catch {
-          tasksEl.innerHTML = `<div style="padding:10px 16px; font-size:13px; color:var(--danger);">Kunne ikke hente opgaver</div>`
+          tasksEl.innerHTML = `<div style="padding:10px 16px;font-size:13px;color:var(--danger);">Kunne ikke hente opgaver</div>`
         }
       }
     })
@@ -289,20 +361,15 @@ function renderPickerTasks(container, el, tasks, project) {
            data-project-id="${escapeAttr(project.id)}"
            data-project-addr="${escapeAttr(project.address || '')}">
         <span class="picker-task-name">${escapeHtml(t.name || 'Unavngivet')}</span>
-        ${isActive
-          ? `<span class="picker-task-badge active-badge-sm">Aktiv</span>`
-          : isDone
-            ? `<span class="picker-task-badge done-badge-sm">Færdig</span>`
-            : ''}
+        ${isActive ? `<span class="picker-task-badge active-badge-sm">Aktiv</span>` : ''}
+        ${!isActive && isDone ? `<span class="picker-task-badge done-badge-sm">Færdig</span>` : ''}
       </div>
     `
   }
 
   el.innerHTML =
     notDone.map(taskRow).join('') +
-    (done.length > 0
-      ? `<div class="picker-section-label">Færdige</div>` + done.map(taskRow).join('')
-      : '')
+    (done.length > 0 ? `<div class="picker-section-label">Færdige</div>` + done.map(taskRow).join('') : '')
 
   el.querySelectorAll('.picker-task').forEach(taskEl => {
     taskEl.addEventListener('click', () => {
@@ -320,12 +387,10 @@ function renderPickerTasks(container, el, tasks, project) {
 async function selectTask(container, { projectId, projectAddr, taskId, taskName, taskStatus }, allTasks) {
   const prev = getActive()
 
-  // Set previous task back to 'in progress' if it wasn't done
   if (prev && prev.taskId && prev.taskId !== taskId && prev.taskStatus !== 'done') {
     try { await updateTask(prev.taskId, { status: 'in progress' }) } catch { /* ignore */ }
   }
 
-  // Set new task to 'in progress' if it was 'not started'
   if (taskStatus === 'not started') {
     try { await updateTask(taskId, { status: 'in progress' }) } catch { /* ignore */ }
     taskStatus = 'in progress'
@@ -333,72 +398,7 @@ async function selectTask(container, { projectId, projectAddr, taskId, taskName,
 
   setActive({ projectId, taskId, taskName, projectAddr, taskStatus })
   closeSheet(container)
-  renderHeroArea(container)
-}
-
-// ─── PROJECT LIST (secondary) ────────────────────────────────
-
-function renderProjectList(container, projects) {
-  const list    = container.querySelector('#projects-list')
-  const countEl = container.querySelector('#projects-count')
-  if (!list) return
-
-  const active    = projects.filter(p => p.status === 'active')
-  const completed = projects.filter(p => p.status === 'completed')
-
-  if (countEl) countEl.textContent = active.length > 0 ? String(active.length) : ''
-
-  if (projects.length === 0) {
-    list.innerHTML = `
-      <div class="empty-state">
-        <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-        </svg>
-        <div class="empty-title">Ingen projekter endnu</div>
-        <div class="empty-body">Tryk på "Nyt projekt" for at oprette dit første projekt.</div>
-      </div>
-    `
-    return
-  }
-
-  let html = ''
-  if (active.length > 0) html += active.map(projectCard).join('')
-  if (completed.length > 0) {
-    if (active.length > 0) html += '<div class="divider" style="margin: 12px 0;"></div>'
-    html += `<div style="font-size:11px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:var(--text3);font-family:var(--mono);padding:4px 2px 8px;">Afsluttede projekter</div>`
-    html += completed.map(projectCard).join('')
-  }
-
-  list.innerHTML = html
-
-  list.querySelectorAll('.project-card').forEach(card => {
-    card.addEventListener('click', () => {
-      window.navigate('project-view', { projectId: card.dataset.id })
-    })
-  })
-}
-
-function projectCard(project) {
-  const statusBadge = project.status === 'active'
-    ? `<span class="badge badge-active">Aktiv</span>`
-    : `<span class="badge badge-completed">Færdig</span>`
-
-  const dateStr = project.startDate
-    ? `Fra ${formatDateShort(project.startDate)}`
-    : (project.createdAt ? `Oprettet ${relativeDate(project.createdAt)}` : '')
-
-  return `
-    <div class="project-card" data-id="${escapeAttr(project.id)}">
-      <div class="project-card-top">
-        <div class="project-address">${escapeHtml(project.address || 'Ukendt adresse')}</div>
-        ${statusBadge}
-      </div>
-      ${project.description ? `<div class="project-desc">${escapeHtml(project.description)}</div>` : ''}
-      <div class="project-meta">
-        ${dateStr ? `<div class="project-meta-item">${iconCalendar()}<span>${dateStr}</span></div>` : ''}
-      </div>
-    </div>
-  `
+  renderHero(container)
 }
 
 // ─── HELPERS ────────────────────────────────────────────────
@@ -422,10 +422,6 @@ function iconSettings() {
     <circle cx="12" cy="12" r="3"/>
     <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
   </svg>`
-}
-
-function iconCalendar() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>`
 }
 
 function iconCameraLg() {
@@ -454,12 +450,4 @@ function iconChevron() {
 
 function iconClose() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6L6 18M6 6l12 12"/></svg>`
-}
-
-function iconTaskLg() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" width="40" height="40">
-    <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
-    <path d="M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-    <path d="M9 12l2 2 4-4"/>
-  </svg>`
 }
