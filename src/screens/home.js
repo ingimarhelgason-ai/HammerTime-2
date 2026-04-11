@@ -4,37 +4,55 @@ import { getApiKey } from '../js/claude.js'
 import { getActive, setActive, clearActive } from '../js/activeTask.js'
 
 let _unsubProjects = null
-let _projects      = []   // full list for task picker + project name lookup
+let _projects      = []
 
 // ─── LIFECYCLE ──────────────────────────────────────────────
 
 export function render(container) {
   container.innerHTML = buildShell()
 
-  container.querySelector('#btn-settings').addEventListener('click', () => {
-    window.navigate('settings')
-  })
-  container.querySelector('#btn-new-project').addEventListener('click', () => {
-    window.navigate('project-new')
-  })
-  container.querySelector('#btn-projekter').addEventListener('click', () => {
-    window.navigate('projects')
-  })
+  container.querySelector('#btn-settings').addEventListener('click', () => window.navigate('settings'))
 
   const banner = container.querySelector('#api-key-banner')
   if (banner) banner.addEventListener('click', () => window.navigate('settings'))
 
-  renderHero(container)
+  container.querySelector('#btn-hero-log').addEventListener('click', () => {
+    const active = getActive()
+    window.navigate('log', {
+      projectId:  active?.projectId || null,
+      taskId:     active?.taskId    || null,
+      taskName:   active?.taskName  || null,
+      returnTo:   'home',
+      autoCamera: true
+    })
+  })
+
+  container.querySelector('#btn-hero-note').addEventListener('click', () => {
+    const active = getActive()
+    window.navigate('log', {
+      projectId: active?.projectId || null,
+      taskId:    active?.taskId    || null,
+      taskName:  active?.taskName  || null,
+      returnTo:  'home',
+      noteOnly:  true
+    })
+  })
+
+  container.querySelector('#btn-new-project').addEventListener('click', () => {
+    window.navigate('project-new')
+  })
 
   _unsubProjects = subscribeToProjects(projects => {
     _projects = projects
 
-    // Invalidate active state if project was removed/completed
     const active = getActive()
     if (active) {
       const proj = projects.find(p => p.id === active.projectId && p.status === 'active')
-      if (!proj) { clearActive(); renderHero(container) }
+      if (!proj) clearActive()
     }
+
+    renderStatusCard(container)
+    renderProjectList(container, projects)
   })
 }
 
@@ -54,9 +72,6 @@ function buildShell() {
           <div class="subtitle">${formatDayFull()}</div>
         </div>
         <div class="top-bar-actions">
-          <button class="btn-icon" id="btn-new-project" aria-label="Nyt projekt" title="Nyt projekt">
-            ${iconPlus()}
-          </button>
           <button class="btn-icon" id="btn-settings" aria-label="Indstillinger">
             ${iconSettings()}
           </button>
@@ -83,24 +98,38 @@ function buildShell() {
         </div>
       ` : ''}
 
-      <!-- Hero: fixed above safe-bottom link -->
-      <div id="hero-area"></div>
+      <div class="screen-body home-body">
+        <div id="status-area"></div>
 
-      <!-- Bottom: subtle projects link -->
-      <div class="screen-body home-footer-area">
-        <button class="btn-projekter" id="btn-projekter">PROJEKTER</button>
+        <div class="home-actions">
+          <button class="btn-hero-camera" id="btn-hero-log">
+            <div class="hero-camera-circle">${iconCameraLg()}</div>
+            <span>Log foto</span>
+          </button>
+          <button class="btn-ghost btn-hero-note" id="btn-hero-note">
+            ${iconNote()}
+            Bare en note
+          </button>
+        </div>
+
+        <div class="home-projects-section">
+          <div class="home-section-label">PROJEKTER</div>
+          <div id="home-project-list"></div>
+          <button class="btn-dashed-new" id="btn-new-project">
+            ${iconPlus()}
+            Nyt projekt
+          </button>
+        </div>
+
         <div class="safe-bottom"></div>
       </div>
 
-      <!-- Picker bottom sheet (project or task) -->
       <div class="sheet-overlay" id="sheet-overlay">
         <div class="sheet">
           <div class="sheet-handle"></div>
           <div class="sheet-header">
-            <span class="sheet-title" id="sheet-title">Vælg projekt</span>
-            <button class="btn-icon sheet-close" id="btn-sheet-close" aria-label="Luk">
-              ${iconClose()}
-            </button>
+            <span class="sheet-title" id="sheet-title"></span>
+            <button class="btn-icon sheet-close" id="btn-sheet-close">${iconClose()}</button>
           </div>
           <div class="sheet-body" id="sheet-body"></div>
         </div>
@@ -109,218 +138,140 @@ function buildShell() {
   `
 }
 
-// ─── HERO ───────────────────────────────────────────────────
+// ─── STATUS CARD ────────────────────────────────────────────
 
-function renderHero(container) {
-  const area   = container.querySelector('#hero-area')
+function renderStatusCard(container) {
+  const area   = container.querySelector('#status-area')
   if (!area) return
   const active = getActive()
 
   if (!active) {
     area.innerHTML = `
-      <div class="home-hero home-hero-empty">
-        <button class="hero-selector-btn" id="btn-pick-project">
-          <div class="hero-selector-content">
-            <div class="hero-selector-label">Projekt</div>
-            <div class="hero-selector-value" style="color:var(--text2);">Vælg projekt…</div>
-          </div>
-          <div class="hero-selector-chevron">${iconChevronRight()}</div>
-        </button>
-        <button class="hero-selector-btn" disabled style="opacity:0.35; pointer-events:none;">
-          <div class="hero-selector-content">
-            <div class="hero-selector-label">Opgave</div>
-            <div class="hero-selector-value" style="color:var(--text2);">Vælg opgave…</div>
-          </div>
-          <div class="hero-selector-chevron">${iconChevronRight()}</div>
-        </button>
+      <div class="status-card status-card-empty">
+        <div class="status-empty-label">Ingen aktiv opgave</div>
+        <div class="status-empty-hint">Vælg et projekt og en opgave for at komme i gang</div>
+        <button class="btn-primary status-empty-btn" id="btn-select-project">Vælg projekt</button>
       </div>
     `
-    area.querySelector('#btn-pick-project').addEventListener('click', () => openProjectPicker(container))
+    area.querySelector('#btn-select-project').addEventListener('click', () => openProjectPicker(container))
     return
   }
 
+  const hasTask = !!active.taskId
+
   area.innerHTML = `
-    <div class="home-hero">
-      <button class="hero-selector-btn" id="btn-pick-project">
-        <div class="hero-selector-content">
-          <div class="hero-selector-label">Projekt</div>
-          <div class="hero-selector-value">${escapeHtml(active.projectAddr || 'Ukendt projekt')}</div>
-        </div>
-        <div class="hero-selector-chevron">${iconChevronRight()}</div>
-      </button>
-      <button class="hero-selector-btn" id="btn-pick-task">
-        <div class="hero-selector-content">
-          <div class="hero-selector-label">Opgave</div>
-          <div class="hero-selector-value">${escapeHtml(active.taskName || 'Unavngivet opgave')}</div>
-        </div>
-        <div class="hero-selector-chevron">${iconChevronRight()}</div>
-      </button>
-      <div class="home-hero-actions">
-        <button class="btn-hero-camera" id="btn-hero-log">
-          <div class="hero-camera-circle">${iconCameraLg()}</div>
-          <span>Log foto</span>
+    <div class="status-card">
+      <div class="status-card-header">
+        <span class="status-dot${hasTask ? '' : ' status-dot-idle'}"></span>
+        <span class="status-aktiv${hasTask ? '' : ' status-aktiv-idle'}">${hasTask ? 'AKTIV' : 'KLAR'}</span>
+      </div>
+      <div class="status-card-rows">
+        <button class="status-row" id="btn-pick-project">
+          <div class="status-row-inner">
+            <div class="status-row-label">PROJEKT</div>
+            <div class="status-row-value">${escapeHtml(active.projectAddr || 'Ukendt projekt')}</div>
+          </div>
+          <div class="status-row-chevron">${iconChevronRight()}</div>
         </button>
-        <button class="btn-ghost btn-hero-note" id="btn-hero-note">
-          ${iconNote()}
-          Bare en note
+        <button class="status-row" id="btn-pick-task">
+          <div class="status-row-inner">
+            <div class="status-row-label">OPGAVE</div>
+            <div class="status-row-value${hasTask ? '' : ' status-row-placeholder'}">
+              ${hasTask ? escapeHtml(active.taskName || 'Unavngivet') : 'Vælg opgave\u2026'}
+            </div>
+          </div>
+          <div class="status-row-chevron">${iconChevronRight()}</div>
         </button>
       </div>
     </div>
   `
 
   area.querySelector('#btn-pick-project').addEventListener('click', () => openProjectPicker(container))
-  area.querySelector('#btn-pick-task').addEventListener('click', () => openTaskPickerForProject(container, active.projectId))
-
-  area.querySelector('#btn-hero-log').addEventListener('click', () => {
-    window.navigate('log', {
-      projectId:  active.projectId,
-      taskId:     active.taskId,
-      taskName:   active.taskName,
-      returnTo:   'home',
-      autoCamera: true
-    })
-  })
-
-  area.querySelector('#btn-hero-note').addEventListener('click', () => {
-    window.navigate('log', {
-      projectId: active.projectId,
-      taskId:    active.taskId,
-      taskName:  active.taskName,
-      returnTo:  'home',
-      noteOnly:  true
-    })
-  })
+  area.querySelector('#btn-pick-task').addEventListener('click', () => openTaskPicker(container, active.projectId))
 }
 
-// ─── PICKER SHEET ───────────────────────────────────────────
+// ─── PROJECT PICKER ─────────────────────────────────────────
 
-function openSheet(container, title) {
-  const overlay = container.querySelector('#sheet-overlay')
-  const body    = container.querySelector('#sheet-body')
-  const titleEl = container.querySelector('#sheet-title')
-  if (!overlay) return null
-
-  if (titleEl) titleEl.textContent = title
-  overlay.classList.add('open')
-  body.innerHTML = '<div class="empty-state" style="padding:40px 0;"><div class="spinner"></div></div>'
-
-  overlay.onclick = e => { if (e.target === overlay) closeSheet(container) }
-  container.querySelector('#btn-sheet-close').onclick = () => closeSheet(container)
-
-  return body
-}
-
-function closeSheet(container) {
-  container.querySelector('#sheet-overlay')?.classList.remove('open')
-}
-
-// Project picker — shows all active projects; tap to expand tasks
 function openProjectPicker(container) {
   const body = openSheet(container, 'Vælg projekt')
   if (!body) return
 
+  const active         = getActive()
   const activeProjects = _projects.filter(p => p.status === 'active')
+  const doneProjects   = _projects.filter(p => p.status === 'completed')
 
-  if (activeProjects.length === 0) {
-    body.innerHTML = `
-      <div class="empty-state" style="padding:40px 0;">
-        <div class="empty-title">Ingen aktive projekter</div>
-        <div class="empty-body">Opret et projekt for at komme i gang.</div>
+  const listHtml = [
+    ...activeProjects.map(p => `
+      <div class="picker-proj-item${active && active.projectId === p.id ? ' is-active' : ''}"
+           data-id="${escapeAttr(p.id)}"
+           data-addr="${escapeAttr(p.address || '')}">
+        <div class="picker-proj-addr">${escapeHtml(p.address || 'Ukendt adresse')}</div>
+        ${p.description ? `<div class="picker-proj-desc">${escapeHtml(p.description)}</div>` : ''}
       </div>
-      <div class="sheet-footer">
-        <button class="btn-primary" id="sheet-btn-new-project">
-          ${iconPlus()}
-          Nyt projekt
-        </button>
+    `),
+    ...doneProjects.map(p => `
+      <div class="picker-proj-item picker-proj-done">
+        <div class="picker-proj-addr">${escapeHtml(p.address || 'Ukendt adresse')}</div>
+        <span class="picker-proj-badge">FÆRDIG</span>
       </div>
-    `
-    body.querySelector('#sheet-btn-new-project').addEventListener('click', () => {
-      closeSheet(container)
-      window.navigate('project-new')
-    })
-    return
-  }
+    `)
+  ].join('')
 
   body.innerHTML = `
-    <div id="picker-projects-list"></div>
+    <div id="picker-proj-list">
+      ${_projects.length === 0 ? `
+        <div class="empty-state" style="padding:40px 0;">
+          <div class="empty-title">Ingen projekter</div>
+          <div class="empty-body">Opret dit første projekt for at komme i gang.</div>
+        </div>
+      ` : listHtml}
+    </div>
     <div class="sheet-footer">
-      <button class="btn-ghost sheet-new-project-btn" id="sheet-btn-new-project">
+      <button class="btn-dashed-new sheet-new-proj-btn" id="sheet-btn-new">
         ${iconPlus()}
         Nyt projekt
       </button>
     </div>
   `
 
-  body.querySelector('#sheet-btn-new-project').addEventListener('click', () => {
+  body.querySelectorAll('.picker-proj-item:not(.picker-proj-done)').forEach(el => {
+    el.addEventListener('click', () => selectProject(container, el.dataset.id, el.dataset.addr))
+  })
+
+  body.querySelector('#sheet-btn-new').addEventListener('click', () => {
     closeSheet(container)
     window.navigate('project-new')
   })
-
-  renderPickerProjects(container, body.querySelector('#picker-projects-list'), activeProjects, null)
 }
 
-// Task picker — pre-expands to the current project's tasks
-function openTaskPickerForProject(container, projectId) {
-  const body = openSheet(container, 'Vælg opgave')
+async function selectProject(container, projectId, projectAddr) {
+  const prev = getActive()
+
+  if (!prev || prev.projectId !== projectId) {
+    if (prev && prev.taskId && prev.taskStatus !== 'done') {
+      try { await updateTask(prev.taskId, { status: 'in progress' }) } catch { /* ignore */ }
+    }
+    setActive({ projectId, projectAddr, taskId: null, taskName: null, taskStatus: 'not started' })
+    renderStatusCard(container)
+  }
+
+  closeSheet(container)
+  setTimeout(() => openTaskPicker(container, projectId), 300)
+}
+
+// ─── TASK PICKER ────────────────────────────────────────────
+
+function openTaskPicker(container, projectId) {
+  const project = _projects.find(p => p.id === projectId)
+  const title   = project?.address || 'Vælg opgave'
+  const body    = openSheet(container, title)
   if (!body) return
 
-  const activeProjects = _projects.filter(p => p.status === 'active')
-  if (activeProjects.length === 0) {
-    body.innerHTML = `<div class="empty-state" style="padding:40px 0;"><div class="empty-title">Ingen aktive projekter</div></div>`
-    return
-  }
+  body.innerHTML = `<div class="empty-state" style="padding:40px 0;"><div class="spinner" style="width:18px;height:18px;border-width:2px;"></div></div>`
 
-  renderPickerProjects(container, body, activeProjects, projectId)
-}
-
-function renderPickerProjects(container, el, projects, preExpandId) {
-  el.innerHTML = projects.map(p => `
-    <div class="picker-project" data-id="${escapeAttr(p.id)}">
-      <div class="picker-project-header">
-        <span class="picker-project-addr">${escapeHtml(p.address || 'Ukendt adresse')}</span>
-        <span class="picker-chevron">${iconChevron()}</span>
-      </div>
-      <div class="picker-tasks" id="picker-tasks-${escapeAttr(p.id)}"></div>
-    </div>
-  `).join('')
-
-  const expandProject = async (projectEl) => {
-    const projectId = projectEl.dataset.id
-    const tasksEl   = el.querySelector(`#picker-tasks-${CSS.escape(projectId)}`)
-
-    // Collapse all
-    el.querySelectorAll('.picker-project').forEach(p => {
-      p.classList.remove('expanded')
-      el.querySelector(`#picker-tasks-${CSS.escape(p.dataset.id)}`).innerHTML = ''
-    })
-
-    projectEl.classList.add('expanded')
-    tasksEl.innerHTML = `<div style="padding:8px 16px;"><div class="spinner" style="width:18px;height:18px;border-width:2px;"></div></div>`
-
-    try {
-      const tasks   = await getTasks(projectId)
-      const project = _projects.find(p => p.id === projectId)
-      renderPickerTasks(container, tasksEl, tasks, project)
-    } catch {
-      tasksEl.innerHTML = `<div style="padding:10px 16px;font-size:13px;color:var(--danger);">Kunne ikke hente opgaver</div>`
-    }
-  }
-
-  el.querySelectorAll('.picker-project').forEach(projectEl => {
-    projectEl.querySelector('.picker-project-header').addEventListener('click', async () => {
-      if (projectEl.classList.contains('expanded')) {
-        projectEl.classList.remove('expanded')
-        el.querySelector(`#picker-tasks-${CSS.escape(projectEl.dataset.id)}`).innerHTML = ''
-      } else {
-        await expandProject(projectEl)
-      }
-    })
-  })
-
-  if (preExpandId) {
-    const target = el.querySelector(`.picker-project[data-id="${CSS.escape(preExpandId)}"]`)
-    if (target) expandProject(target)
-  }
+  getTasks(projectId)
+    .then(tasks => { if (body.isConnected) renderPickerTasks(container, body, tasks, project) })
+    .catch(() => { if (body.isConnected) body.innerHTML = `<div style="padding:16px 18px;font-size:13px;color:var(--danger);">Kunne ikke hente opgaver</div>` })
 }
 
 function renderPickerTasks(container, el, tasks, project) {
@@ -366,7 +317,6 @@ function renderPickerTasks(container, el, tasks, project) {
     </div>
   `
 
-  // Task selection
   el.querySelectorAll('.picker-task').forEach(taskEl => {
     taskEl.addEventListener('click', () => selectTask(container, {
       projectId:   taskEl.dataset.projectId,
@@ -374,20 +324,18 @@ function renderPickerTasks(container, el, tasks, project) {
       taskId:      taskEl.dataset.taskId,
       taskName:    taskEl.dataset.taskName,
       taskStatus:  taskEl.dataset.taskStatus
-    }, tasks))
+    }))
   })
 
-  // Inline add-task form
-  const trigger  = el.querySelector('#picker-add-trigger')
-  const form     = el.querySelector('#picker-add-form')
-  const input    = el.querySelector('#picker-add-input')
+  const trigger   = el.querySelector('#picker-add-trigger')
+  const form      = el.querySelector('#picker-add-form')
+  const input     = el.querySelector('#picker-add-input')
   const cancelBtn = el.querySelector('#picker-add-cancel')
-  const saveBtn  = el.querySelector('#picker-add-save')
+  const saveBtn   = el.querySelector('#picker-add-save')
 
   trigger.addEventListener('click', () => {
     trigger.style.display = 'none'
     form.style.display = 'block'
-    input.value = ''
     setTimeout(() => input.focus(), 50)
   })
 
@@ -406,25 +354,22 @@ function renderPickerTasks(container, el, tasks, project) {
     try {
       const newTaskId = await createTask(project.id, name)
 
-      // Set as active immediately
       const prev = getActive()
       if (prev && prev.taskId && prev.taskStatus !== 'done') {
         try { await updateTask(prev.taskId, { status: 'in progress' }) } catch { /* ignore */ }
       }
-      if (newTaskId) {
-        await updateTask(newTaskId, { status: 'in progress' })
-      }
+      await updateTask(newTaskId, { status: 'in progress' })
 
       setActive({
         projectId:   project.id,
-        taskId:      newTaskId || '',
+        taskId:      newTaskId,
         taskName:    name,
         projectAddr: project.address || '',
         taskStatus:  'in progress'
       })
 
       closeSheet(container)
-      renderHero(container)
+      renderStatusCard(container)
     } catch (err) {
       console.error('Kunne ikke oprette opgave:', err)
       saveBtn.disabled = false
@@ -440,7 +385,7 @@ function renderPickerTasks(container, el, tasks, project) {
   })
 }
 
-async function selectTask(container, { projectId, projectAddr, taskId, taskName, taskStatus }, allTasks) {
+async function selectTask(container, { projectId, projectAddr, taskId, taskName, taskStatus }) {
   const prev = getActive()
 
   if (prev && prev.taskId && prev.taskId !== taskId && prev.taskStatus !== 'done') {
@@ -454,7 +399,60 @@ async function selectTask(container, { projectId, projectAddr, taskId, taskName,
 
   setActive({ projectId, taskId, taskName, projectAddr, taskStatus })
   closeSheet(container)
-  renderHero(container)
+  renderStatusCard(container)
+}
+
+// ─── PROJECT LIST (BOTTOM) ───────────────────────────────────
+
+function renderProjectList(container, projects) {
+  const el = container.querySelector('#home-project-list')
+  if (!el) return
+
+  if (projects.length === 0) {
+    el.innerHTML = ''
+    return
+  }
+
+  el.innerHTML = projects.map(p => {
+    const isActive = p.status === 'active'
+    return `
+      <div class="home-proj-card" data-id="${escapeAttr(p.id)}">
+        <div class="home-proj-card-inner">
+          <div class="home-proj-addr">${escapeHtml(p.address || 'Ukendt adresse')}</div>
+          ${p.description ? `<div class="home-proj-desc">${escapeHtml(p.description)}</div>` : ''}
+        </div>
+        <span class="home-proj-badge${isActive ? ' home-proj-badge-active' : ' home-proj-badge-done'}">
+          ${isActive ? 'AKTIV' : 'FÆRDIG'}
+        </span>
+      </div>
+    `
+  }).join('')
+
+  el.querySelectorAll('.home-proj-card').forEach(card => {
+    card.addEventListener('click', () => window.navigate('project-view', { projectId: card.dataset.id }))
+  })
+}
+
+// ─── SHEET HELPERS ──────────────────────────────────────────
+
+function openSheet(container, title) {
+  const overlay = container.querySelector('#sheet-overlay')
+  const body    = container.querySelector('#sheet-body')
+  const titleEl = container.querySelector('#sheet-title')
+  if (!overlay) return null
+
+  if (titleEl) titleEl.textContent = title
+  overlay.classList.add('open')
+  body.innerHTML = ''
+
+  overlay.onclick = e => { if (e.target === overlay) closeSheet(container) }
+  container.querySelector('#btn-sheet-close').onclick = () => closeSheet(container)
+
+  return body
+}
+
+function closeSheet(container) {
+  container.querySelector('#sheet-overlay')?.classList.remove('open')
 }
 
 // ─── HELPERS ────────────────────────────────────────────────
@@ -468,10 +466,6 @@ function escapeAttr(str) {
 }
 
 // ─── ICONS ──────────────────────────────────────────────────
-
-function iconPlus() {
-  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>`
-}
 
 function iconSettings() {
   return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
@@ -494,14 +488,14 @@ function iconNote() {
   </svg>`
 }
 
-function iconChevron() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M9 18l6-6-6-6"/></svg>`
-}
-
 function iconChevronRight() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18"><path d="M9 18l6-6-6-6"/></svg>`
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M9 18l6-6-6-6"/></svg>`
 }
 
 function iconClose() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6L6 18M6 6l12 12"/></svg>`
+}
+
+function iconPlus() {
+  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>`
 }

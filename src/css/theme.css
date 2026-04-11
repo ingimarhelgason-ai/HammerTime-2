@@ -926,7 +926,344 @@ html, body {
   flex-shrink: 0;
 }
 
-/* ─── HOME HERO ─── */
+/* ─── HOME BODY ─── */
+.home-body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── STATUS CARD ─── */
+.status-card {
+  margin: 14px 14px 0;
+  background: var(--surface);
+  border: 0.5px solid var(--border2);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.status-card-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 14px 6px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
+
+.status-dot-idle {
+  background: var(--text3);
+}
+
+.status-aktiv {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-family: var(--mono);
+  color: var(--green);
+}
+
+.status-aktiv-idle {
+  color: var(--text3);
+}
+
+.status-card-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 10px 10px;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 13px;
+  background: var(--surface2);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.status-row:active {
+  background: var(--surface3);
+}
+
+.status-row-inner {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.status-row-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  font-family: var(--mono);
+  color: var(--text3);
+}
+
+.status-row-value {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.3px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-row-placeholder {
+  color: var(--text3);
+  font-weight: 500;
+}
+
+.status-row-chevron {
+  color: var(--accent);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.status-card-empty {
+  margin: 14px 14px 0;
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.status-empty-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text2);
+}
+
+.status-empty-hint {
+  font-size: 13px;
+  color: var(--text3);
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.status-empty-btn {
+  align-self: flex-start;
+}
+
+/* ─── HOME ACTIONS ─── */
+.home-actions {
+  padding: 12px 14px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ─── HOME PROJECTS SECTION ─── */
+.home-projects-section {
+  padding: 20px 14px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.home-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-family: var(--mono);
+  color: var(--text3);
+}
+
+.home-proj-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 13px 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.home-proj-card:active {
+  background: var(--surface2);
+}
+
+.home-proj-card-inner {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.home-proj-addr {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.1px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-proj-desc {
+  font-size: 12px;
+  color: var(--text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.home-proj-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-family: var(--mono);
+  padding: 3px 7px;
+  border-radius: 20px;
+  flex-shrink: 0;
+}
+
+.home-proj-badge-active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border: 0.5px solid var(--accent-rim);
+}
+
+.home-proj-badge-done {
+  background: var(--surface2);
+  color: var(--text3);
+  border: 0.5px solid var(--border2);
+}
+
+/* ─── DASHED NEW BUTTON ─── */
+.btn-dashed-new {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 16px;
+  background: transparent;
+  border: 0.5px dashed var(--border2);
+  border-radius: var(--radius);
+  color: var(--text3);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-dashed-new:active {
+  border-color: var(--accent-rim);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.btn-dashed-new svg {
+  color: var(--accent);
+}
+
+/* ─── PROJECT PICKER ITEMS ─── */
+.picker-proj-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 14px 18px;
+  border-bottom: 0.5px solid var(--border);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.picker-proj-item:last-child {
+  border-bottom: none;
+}
+
+.picker-proj-item:active:not(.picker-proj-done) {
+  background: var(--surface2);
+}
+
+.picker-proj-item.is-active {
+  background: var(--accent);
+}
+
+.picker-proj-item.is-active .picker-proj-addr {
+  color: #000;
+  font-weight: 700;
+}
+
+.picker-proj-item.is-active .picker-proj-desc {
+  color: rgba(0,0,0,0.55);
+}
+
+.picker-proj-done {
+  opacity: 0.45;
+  pointer-events: none;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
+.picker-proj-addr {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.picker-proj-desc {
+  font-size: 12px;
+  color: var(--text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.picker-proj-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  font-family: var(--mono);
+  padding: 2px 6px;
+  border-radius: 20px;
+  background: var(--surface2);
+  color: var(--text3);
+  border: 0.5px solid var(--border2);
+  flex-shrink: 0;
+}
+
+.sheet-new-proj-btn {
+  width: 100%;
+}
+
+/* ─── HOME HERO (legacy — kept for backwards compat) ─── */
 .home-hero {
   padding: 12px 14px 18px;
   border-bottom: 0.5px solid var(--border);

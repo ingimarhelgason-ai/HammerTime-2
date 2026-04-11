@@ -6,12 +6,11 @@ const P = 'ht_active_'
 
 export function getActive() {
   const projectId = localStorage.getItem(P + 'projectId')
-  const taskId    = localStorage.getItem(P + 'taskId')
-  if (!projectId || !taskId) return null
+  if (!projectId) return null
   return {
     projectId,
-    taskId,
-    taskName:    localStorage.getItem(P + 'taskName')    || '',
+    taskId:      localStorage.getItem(P + 'taskId')      || null,
+    taskName:    localStorage.getItem(P + 'taskName')    || null,
     projectAddr: localStorage.getItem(P + 'projectAddr') || '',
     taskStatus:  localStorage.getItem(P + 'taskStatus')  || 'not started'
   }
