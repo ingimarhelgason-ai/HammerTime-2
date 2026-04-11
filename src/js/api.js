@@ -178,6 +178,21 @@ export function subscribeToRecentLogs(limitCount, callback) {
 }
 
 /**
+ * Subscribe to logs for a specific task (real-time), newest first.
+ * Returns an unsubscribe function.
+ */
+export function subscribeToTaskLogs(taskId, callback) {
+  const q = query(
+    collection(db, 'logs'),
+    where('taskId', '==', taskId),
+    orderBy('timestamp', 'desc')
+  )
+  return onSnapshot(q, snapshot => {
+    callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() })))
+  })
+}
+
+/**
  * Add a log entry.
  */
 export async function addLog(data) {
