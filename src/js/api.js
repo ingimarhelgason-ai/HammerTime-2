@@ -85,13 +85,14 @@ export async function updateTask(taskId, data) {
  * Create a single task for a project.
  */
 export async function createTask(projectId, name) {
-  await addDoc(collection(db, 'tasks'), {
+  const ref = await addDoc(collection(db, 'tasks'), {
     projectId,
     name,
     estimatedHours: null,
     status: 'not started',
     createdAt: serverTimestamp()
   })
+  return ref.id
 }
 
 // ─── TASKS ──────────────────────────────────────────────────

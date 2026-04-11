@@ -1447,3 +1447,172 @@ html, body {
 .log-filter-pill:active {
   opacity: 0.7;
 }
+
+/* ─── HOME FOOTER / PROJEKTER LINK ─── */
+.home-footer-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 1;
+  padding-bottom: 0;
+}
+
+.btn-projekter {
+  background: transparent;
+  border: none;
+  color: var(--text3);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  font-family: var(--mono);
+  cursor: pointer;
+  padding: 12px 20px;
+  transition: color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-projekter:active {
+  color: var(--text2);
+}
+
+/* ─── SHEET FOOTER ─── */
+.sheet-footer {
+  padding: 10px 18px max(16px, env(safe-area-inset-bottom));
+  border-top: 0.5px solid var(--border);
+  flex-shrink: 0;
+}
+
+.sheet-new-project-btn {
+  width: 100%;
+  justify-content: center;
+  gap: 8px;
+}
+
+/* ─── PICKER INLINE ADD TASK ─── */
+.picker-add-task-area {
+  padding: 10px 18px 12px;
+  border-top: 0.5px solid var(--border);
+}
+
+.picker-add-task-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 4px;
+  background: transparent;
+  border: none;
+  color: var(--text3);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.picker-add-task-trigger:active {
+  color: var(--text2);
+}
+
+.picker-add-task-trigger svg {
+  color: var(--accent);
+}
+
+.picker-add-task-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.picker-add-input {
+  width: 100%;
+  background: var(--surface3);
+  border: 0.5px solid var(--border2);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+  padding: 11px 13px;
+  outline: none;
+  -webkit-appearance: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.picker-add-input:focus {
+  border-color: var(--accent-rim);
+}
+
+.picker-add-input::placeholder {
+  color: var(--text3);
+}
+
+.picker-add-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* ─── PROJECTS SCREEN ─── */
+.projects-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text3);
+  font-family: var(--mono);
+  padding: 0 2px 4px;
+}
+
+.project-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.project-card:active {
+  background: var(--surface2);
+  border-color: var(--border2);
+}
+
+.project-card-inner {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.project-card-addr {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.2px;
+}
+
+.project-card-desc {
+  font-size: 13px;
+  color: var(--text2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-card-dates {
+  font-size: 11px;
+  color: var(--text3);
+  font-family: var(--mono);
+}
+
+.project-card-chevron {
+  color: var(--text3);
+  flex-shrink: 0;
+}

@@ -1,13 +1,10 @@
-import { subscribeToProjects, subscribeToRecentLogs, getTask, getTasks, updateTask } from '../js/api.js'
-import { formatDayFull, formatTimestamp, relativeDate } from '../js/utils.js'
+import { subscribeToProjects, getTasks, createTask, updateTask } from '../js/api.js'
+import { formatDayFull } from '../js/utils.js'
 import { getApiKey } from '../js/claude.js'
 import { getActive, setActive, clearActive } from '../js/activeTask.js'
 
 let _unsubProjects = null
-let _unsubLogs     = null
 let _projects      = []   // full list for task picker + project name lookup
-let _projectMap    = {}   // projectId → address
-let _taskCache     = {}   // taskId → name (populated lazily from log feed)
 
 // ─── LIFECYCLE ──────────────────────────────────────────────
 
@@ -20,16 +17,17 @@ export function render(container) {
   container.querySelector('#btn-new-project').addEventListener('click', () => {
     window.navigate('project-new')
   })
+  container.querySelector('#btn-projekter').addEventListener('click', () => {
+    window.navigate('projects')
+  })
 
   const banner = container.querySelector('#api-key-banner')
   if (banner) banner.addEventListener('click', () => window.navigate('settings'))
 
   renderHero(container)
 
-  // Projects subscription — used for task picker + project name map
   _unsubProjects = subscribeToProjects(projects => {
-    _projects   = projects
-    _projectMap = Object.fromEntries(projects.map(p => [p.id, p.address || 'Ukendt adresse']))
+    _projects = projects
 
     // Invalidate active state if project was removed/completed
     const active = getActive()
@@ -38,32 +36,11 @@ export function render(container) {
       if (!proj) { clearActive(); renderHero(container) }
     }
   })
-
-  // Recent logs feed subscription
-  _unsubLogs = subscribeToRecentLogs(20, async logs => {
-    // Fetch task names for any taskIds not yet in cache
-    const unknownIds = [...new Set(logs.map(l => l.taskId).filter(Boolean))]
-      .filter(id => !_taskCache[id])
-
-    if (unknownIds.length > 0) {
-      await Promise.all(unknownIds.map(async id => {
-        try {
-          const t = await getTask(id)
-          if (t) _taskCache[id] = t.name || 'Unavngivet opgave'
-        } catch { /* ignore */ }
-      }))
-    }
-
-    renderFeed(container, logs)
-  })
 }
 
 export function destroy() {
   if (_unsubProjects) { _unsubProjects(); _unsubProjects = null }
-  if (_unsubLogs)     { _unsubLogs();     _unsubLogs     = null }
-  _projects   = []
-  _projectMap = {}
-  _taskCache  = {}
+  _projects = []
 }
 
 // ─── SHELL ──────────────────────────────────────────────────
@@ -106,24 +83,18 @@ function buildShell() {
         </div>
       ` : ''}
 
-      <!-- Hero: fixed above the scroll -->
+      <!-- Hero: fixed above safe-bottom link -->
       <div id="hero-area"></div>
 
-      <!-- Feed: main scrollable content -->
-      <div class="screen-body">
-        <div class="section-header" style="padding-top:18px;">
-          <span class="section-title">Seneste logs</span>
-          <span class="section-count" id="feed-count"></span>
-        </div>
-        <div id="feed-list" style="padding: 0 14px; display:flex; flex-direction:column; gap:10px;">
-          <div class="empty-state"><div class="spinner"></div></div>
-        </div>
+      <!-- Bottom: subtle projects link -->
+      <div class="screen-body home-footer-area">
+        <button class="btn-projekter" id="btn-projekter">PROJEKTER</button>
         <div class="safe-bottom"></div>
       </div>
 
       <!-- Picker bottom sheet (project or task) -->
       <div class="sheet-overlay" id="sheet-overlay">
-        <div class="sheet" id="task-picker-sheet">
+        <div class="sheet">
           <div class="sheet-handle"></div>
           <div class="sheet-header">
             <span class="sheet-title" id="sheet-title">Vælg projekt</span>
@@ -155,7 +126,7 @@ function renderHero(container) {
           </div>
           <div class="hero-selector-chevron">${iconChevronRight()}</div>
         </button>
-        <button class="hero-selector-btn" id="btn-pick-task" disabled style="opacity:0.4;">
+        <button class="hero-selector-btn" disabled style="opacity:0.35; pointer-events:none;">
           <div class="hero-selector-content">
             <div class="hero-selector-label">Opgave</div>
             <div class="hero-selector-value" style="color:var(--text2);">Vælg opgave…</div>
@@ -221,65 +192,6 @@ function renderHero(container) {
   })
 }
 
-// ─── RECENT FEED ────────────────────────────────────────────
-
-function renderFeed(container, logs) {
-  const list    = container.querySelector('#feed-list')
-  const countEl = container.querySelector('#feed-count')
-  if (!list) return
-
-  if (countEl) countEl.textContent = logs.length > 0 ? String(logs.length) : ''
-
-  if (logs.length === 0) {
-    list.innerHTML = `
-      <div class="empty-state" style="padding:40px 0;">
-        <div class="empty-title">Ingen logs endnu</div>
-        <div class="empty-body">Tag et foto eller skriv en note for at komme i gang.</div>
-      </div>
-    `
-    return
-  }
-
-  list.innerHTML = logs.map(log => buildFeedCard(log)).join('')
-
-  // Clicking a feed card navigates to the project
-  list.querySelectorAll('.feed-card[data-project-id]').forEach(card => {
-    card.addEventListener('click', () => {
-      window.navigate('project-view', { projectId: card.dataset.projectId })
-    })
-  })
-}
-
-function buildFeedCard(log) {
-  const projectAddr = _projectMap[log.projectId] || ''
-  const taskName    = log.taskId ? (_taskCache[log.taskId] || null) : null
-  const time        = log.timestamp ? formatTimestamp(log.timestamp) : ''
-  const day         = log.timestamp ? relativeDate(log.timestamp)    : ''
-  const timeStr     = day && time ? `${day} · ${time}` : (time || day || '')
-
-  return `
-    <div class="feed-card" data-project-id="${escapeAttr(log.projectId)}">
-      ${log.photoUrl
-        ? `<img class="feed-card-photo" src="${escapeAttr(log.photoUrl)}" alt="Foto" loading="lazy">`
-        : ''}
-      ${log.note
-        ? `<div class="feed-card-note">${escapeHtml(log.note)}</div>`
-        : ''}
-      <div class="feed-card-meta">
-        <div class="feed-card-meta-left">
-          ${taskName
-            ? `<span class="feed-card-task">${escapeHtml(taskName)}</span>`
-            : ''}
-          ${projectAddr
-            ? `<span class="feed-card-project">${escapeHtml(projectAddr)}</span>`
-            : ''}
-        </div>
-        <span class="feed-card-time">${escapeHtml(timeStr)}</span>
-      </div>
-    </div>
-  `
-}
-
 // ─── PICKER SHEET ───────────────────────────────────────────
 
 function openSheet(container, title) {
@@ -298,7 +210,11 @@ function openSheet(container, title) {
   return body
 }
 
-// Opens full project list — tap a project to expand its tasks and pick one
+function closeSheet(container) {
+  container.querySelector('#sheet-overlay')?.classList.remove('open')
+}
+
+// Project picker — shows all active projects; tap to expand tasks
 function openProjectPicker(container) {
   const body = openSheet(container, 'Vælg projekt')
   if (!body) return
@@ -311,38 +227,54 @@ function openProjectPicker(container) {
         <div class="empty-title">Ingen aktive projekter</div>
         <div class="empty-body">Opret et projekt for at komme i gang.</div>
       </div>
+      <div class="sheet-footer">
+        <button class="btn-primary" id="sheet-btn-new-project">
+          ${iconPlus()}
+          Nyt projekt
+        </button>
+      </div>
     `
+    body.querySelector('#sheet-btn-new-project').addEventListener('click', () => {
+      closeSheet(container)
+      window.navigate('project-new')
+    })
     return
   }
 
-  renderPickerProjects(container, body, activeProjects, null)
+  body.innerHTML = `
+    <div id="picker-projects-list"></div>
+    <div class="sheet-footer">
+      <button class="btn-ghost sheet-new-project-btn" id="sheet-btn-new-project">
+        ${iconPlus()}
+        Nyt projekt
+      </button>
+    </div>
+  `
+
+  body.querySelector('#sheet-btn-new-project').addEventListener('click', () => {
+    closeSheet(container)
+    window.navigate('project-new')
+  })
+
+  renderPickerProjects(container, body.querySelector('#picker-projects-list'), activeProjects, null)
 }
 
-// Opens the sheet pre-expanded to a specific project's tasks
-async function openTaskPickerForProject(container, projectId) {
+// Task picker — pre-expands to the current project's tasks
+function openTaskPickerForProject(container, projectId) {
   const body = openSheet(container, 'Vælg opgave')
   if (!body) return
 
   const activeProjects = _projects.filter(p => p.status === 'active')
-
   if (activeProjects.length === 0) {
-    body.innerHTML = `
-      <div class="empty-state" style="padding:40px 0;">
-        <div class="empty-title">Ingen aktive projekter</div>
-      </div>
-    `
+    body.innerHTML = `<div class="empty-state" style="padding:40px 0;"><div class="empty-title">Ingen aktive projekter</div></div>`
     return
   }
 
   renderPickerProjects(container, body, activeProjects, projectId)
 }
 
-function closeSheet(container) {
-  container.querySelector('#sheet-overlay')?.classList.remove('open')
-}
-
-function renderPickerProjects(container, body, projects, preExpandId) {
-  body.innerHTML = projects.map(p => `
+function renderPickerProjects(container, el, projects, preExpandId) {
+  el.innerHTML = projects.map(p => `
     <div class="picker-project" data-id="${escapeAttr(p.id)}">
       <div class="picker-project-header">
         <span class="picker-project-addr">${escapeHtml(p.address || 'Ukendt adresse')}</span>
@@ -352,17 +284,19 @@ function renderPickerProjects(container, body, projects, preExpandId) {
     </div>
   `).join('')
 
-  const expandProject = async (el) => {
-    const projectId = el.dataset.id
-    const tasksEl   = body.querySelector(`#picker-tasks-${CSS.escape(projectId)}`)
+  const expandProject = async (projectEl) => {
+    const projectId = projectEl.dataset.id
+    const tasksEl   = el.querySelector(`#picker-tasks-${CSS.escape(projectId)}`)
 
-    body.querySelectorAll('.picker-project').forEach(p => {
+    // Collapse all
+    el.querySelectorAll('.picker-project').forEach(p => {
       p.classList.remove('expanded')
-      body.querySelector(`#picker-tasks-${CSS.escape(p.dataset.id)}`).innerHTML = ''
+      el.querySelector(`#picker-tasks-${CSS.escape(p.dataset.id)}`).innerHTML = ''
     })
 
-    el.classList.add('expanded')
+    projectEl.classList.add('expanded')
     tasksEl.innerHTML = `<div style="padding:8px 16px;"><div class="spinner" style="width:18px;height:18px;border-width:2px;"></div></div>`
+
     try {
       const tasks   = await getTasks(projectId)
       const project = _projects.find(p => p.id === projectId)
@@ -372,33 +306,25 @@ function renderPickerProjects(container, body, projects, preExpandId) {
     }
   }
 
-  body.querySelectorAll('.picker-project').forEach(el => {
-    el.querySelector('.picker-project-header').addEventListener('click', async () => {
-      if (el.classList.contains('expanded')) {
-        // Collapse
-        el.classList.remove('expanded')
-        body.querySelector(`#picker-tasks-${CSS.escape(el.dataset.id)}`).innerHTML = ''
+  el.querySelectorAll('.picker-project').forEach(projectEl => {
+    projectEl.querySelector('.picker-project-header').addEventListener('click', async () => {
+      if (projectEl.classList.contains('expanded')) {
+        projectEl.classList.remove('expanded')
+        el.querySelector(`#picker-tasks-${CSS.escape(projectEl.dataset.id)}`).innerHTML = ''
       } else {
-        await expandProject(el)
+        await expandProject(projectEl)
       }
     })
   })
 
-  // Auto-expand a specific project if requested
   if (preExpandId) {
-    const target = body.querySelector(`.picker-project[data-id="${CSS.escape(preExpandId)}"]`)
+    const target = el.querySelector(`.picker-project[data-id="${CSS.escape(preExpandId)}"]`)
     if (target) expandProject(target)
   }
 }
 
 function renderPickerTasks(container, el, tasks, project) {
   const currentActive = getActive()
-
-  if (tasks.length === 0) {
-    el.innerHTML = `<div class="picker-empty-tasks">Ingen opgaver på dette projekt</div>`
-    return
-  }
-
   const notDone = tasks.filter(t => t.status !== 'done')
   const done    = tasks.filter(t => t.status === 'done')
 
@@ -413,26 +339,104 @@ function renderPickerTasks(container, el, tasks, project) {
            data-project-id="${escapeAttr(project.id)}"
            data-project-addr="${escapeAttr(project.address || '')}">
         <span class="picker-task-name">${escapeHtml(t.name || 'Unavngivet')}</span>
-        ${isActive ? `<span class="picker-task-badge active-badge-sm">Aktiv</span>` : ''}
+        ${isActive          ? `<span class="picker-task-badge active-badge-sm">Aktiv</span>` : ''}
         ${!isActive && isDone ? `<span class="picker-task-badge done-badge-sm">Færdig</span>` : ''}
       </div>
     `
   }
 
-  el.innerHTML =
-    notDone.map(taskRow).join('') +
-    (done.length > 0 ? `<div class="picker-section-label">Færdige</div>` + done.map(taskRow).join('') : '')
+  el.innerHTML = `
+    ${notDone.length === 0 && done.length === 0
+      ? `<div class="picker-empty-tasks">Ingen opgaver endnu</div>`
+      : notDone.map(taskRow).join('') +
+        (done.length > 0 ? `<div class="picker-section-label">Færdige</div>` + done.map(taskRow).join('') : '')}
+    <div class="picker-add-task-area">
+      <button class="picker-add-task-trigger" id="picker-add-trigger">
+        ${iconPlus()}
+        Tilføj opgave
+      </button>
+      <div class="picker-add-task-form" id="picker-add-form" style="display:none;">
+        <input class="picker-add-input" id="picker-add-input" type="text"
+               placeholder="Opgavenavn" maxlength="200" autocomplete="off">
+        <div class="picker-add-actions">
+          <button class="btn-cancel-task" id="picker-add-cancel">Annuller</button>
+          <button class="btn-save-task" id="picker-add-save">Gem</button>
+        </div>
+      </div>
+    </div>
+  `
 
+  // Task selection
   el.querySelectorAll('.picker-task').forEach(taskEl => {
-    taskEl.addEventListener('click', () => {
-      selectTask(container, {
-        projectId:   taskEl.dataset.projectId,
-        projectAddr: taskEl.dataset.projectAddr,
-        taskId:      taskEl.dataset.taskId,
-        taskName:    taskEl.dataset.taskName,
-        taskStatus:  taskEl.dataset.taskStatus
-      }, tasks)
-    })
+    taskEl.addEventListener('click', () => selectTask(container, {
+      projectId:   taskEl.dataset.projectId,
+      projectAddr: taskEl.dataset.projectAddr,
+      taskId:      taskEl.dataset.taskId,
+      taskName:    taskEl.dataset.taskName,
+      taskStatus:  taskEl.dataset.taskStatus
+    }, tasks))
+  })
+
+  // Inline add-task form
+  const trigger  = el.querySelector('#picker-add-trigger')
+  const form     = el.querySelector('#picker-add-form')
+  const input    = el.querySelector('#picker-add-input')
+  const cancelBtn = el.querySelector('#picker-add-cancel')
+  const saveBtn  = el.querySelector('#picker-add-save')
+
+  trigger.addEventListener('click', () => {
+    trigger.style.display = 'none'
+    form.style.display = 'block'
+    input.value = ''
+    setTimeout(() => input.focus(), 50)
+  })
+
+  cancelBtn.addEventListener('click', () => {
+    form.style.display = 'none'
+    trigger.style.display = 'flex'
+  })
+
+  const saveNewTask = async () => {
+    const name = input.value.trim()
+    if (!name) { input.focus(); return }
+
+    saveBtn.disabled = true
+    saveBtn.textContent = '...'
+
+    try {
+      const newTaskId = await createTask(project.id, name)
+
+      // Set as active immediately
+      const prev = getActive()
+      if (prev && prev.taskId && prev.taskStatus !== 'done') {
+        try { await updateTask(prev.taskId, { status: 'in progress' }) } catch { /* ignore */ }
+      }
+      if (newTaskId) {
+        await updateTask(newTaskId, { status: 'in progress' })
+      }
+
+      setActive({
+        projectId:   project.id,
+        taskId:      newTaskId || '',
+        taskName:    name,
+        projectAddr: project.address || '',
+        taskStatus:  'in progress'
+      })
+
+      closeSheet(container)
+      renderHero(container)
+    } catch (err) {
+      console.error('Kunne ikke oprette opgave:', err)
+      saveBtn.disabled = false
+      saveBtn.textContent = 'Gem'
+      input.focus()
+    }
+  }
+
+  saveBtn.addEventListener('click', saveNewTask)
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') saveNewTask()
+    if (e.key === 'Escape') cancelBtn.click()
   })
 }
 
@@ -466,7 +470,7 @@ function escapeAttr(str) {
 // ─── ICONS ──────────────────────────────────────────────────
 
 function iconPlus() {
-  return `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>`
+  return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>`
 }
 
 function iconSettings() {
@@ -487,12 +491,6 @@ function iconNote() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16">
     <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
     <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-  </svg>`
-}
-
-function iconSwap() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15">
-    <path d="M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4"/>
   </svg>`
 }
 

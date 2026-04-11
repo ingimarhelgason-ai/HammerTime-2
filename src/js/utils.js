@@ -44,34 +44,67 @@ export function relativeDate(ts) {
 // ─── IMAGE COMPRESSION ──────────────────────────────────────
 
 /**
- * Compress an image File to max 1200px longest side, JPEG at 0.75 quality.
+ * Compress an image File to max 800px longest side, JPEG at 0.65 quality.
+ * If the result is still over 500 KB a second pass at 0.5 quality is applied.
+ * Canvas memory is explicitly released after each pass.
  * Returns a Blob.
  */
 export function compressImage(file) {
   return new Promise((resolve, reject) => {
     const img = new Image()
     const url = URL.createObjectURL(file)
+
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Kan ikke læse billedet — prøv igen'))
+    }
+
     img.onload = () => {
       URL.revokeObjectURL(url)
-      const MAX = 1200
-      let { width, height } = img
-      if (width > MAX || height > MAX) {
-        if (width > height) { height = Math.round(height * MAX / width); width = MAX }
-        else { width = Math.round(width * MAX / height); height = MAX }
+      try {
+        const MAX = 800
+        let { width, height } = img
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round(height * MAX / width); width = MAX }
+          else                { width = Math.round(width * MAX / height); height = MAX }
+        }
+
+        const canvas = document.createElement('canvas')
+        canvas.width  = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          reject(new Error('Billedkomprimering fejlede — prøv med et andet foto'))
+          return
+        }
+        ctx.drawImage(img, 0, 0, width, height)
+
+        // First pass at 0.65
+        canvas.toBlob(blob1 => {
+          if (!blob1) {
+            canvas.width = 0; canvas.height = 0
+            reject(new Error('Billedkomprimering fejlede — prøv igen'))
+            return
+          }
+
+          if (blob1.size <= 500 * 1024) {
+            canvas.width = 0; canvas.height = 0
+            resolve(blob1)
+            return
+          }
+
+          // Still over 500 KB — second pass at 0.5 from same canvas
+          canvas.toBlob(blob2 => {
+            canvas.width = 0; canvas.height = 0
+            resolve(blob2 || blob1)
+          }, 'image/jpeg', 0.5)
+        }, 'image/jpeg', 0.65)
+
+      } catch {
+        reject(new Error('Billedkomprimering fejlede — prøv med et andet foto'))
       }
-      const canvas = document.createElement('canvas')
-      canvas.width = width
-      canvas.height = height
-      const ctx = canvas.getContext('2d')
-      if (!ctx) { reject(new Error('Kan ikke oprette canvas')); return }
-      ctx.drawImage(img, 0, 0, width, height)
-      canvas.toBlob(
-        blob => blob ? resolve(blob) : reject(new Error('Billedkomprimering fejlede — prøv igen')),
-        'image/jpeg',
-        0.75
-      )
     }
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Kan ikke læse billede')) }
+
     img.src = url
   })
 }
