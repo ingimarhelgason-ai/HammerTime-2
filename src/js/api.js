@@ -182,13 +182,21 @@ export function subscribeToRecentLogs(limitCount, callback) {
  * Returns an unsubscribe function.
  */
 export function subscribeToTaskLogs(taskId, callback) {
+  // Single-field where clause only — no composite index required.
+  // Client-side sort by timestamp descending.
   const q = query(
     collection(db, 'logs'),
-    where('taskId', '==', taskId),
-    orderBy('timestamp', 'desc')
+    where('taskId', '==', taskId)
   )
   return onSnapshot(q, snapshot => {
-    callback(snapshot.docs.map(d => ({ id: d.id, ...d.data() })))
+    const logs = snapshot.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => {
+        const ta = a.timestamp?.toMillis?.() ?? 0
+        const tb = b.timestamp?.toMillis?.() ?? 0
+        return tb - ta
+      })
+    callback(logs)
   })
 }
 

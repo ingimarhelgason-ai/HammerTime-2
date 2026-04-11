@@ -1,4 +1,4 @@
-import { getProject, subscribeToTasks, subscribeToLogs, updateTask, createTask } from '../js/api.js'
+import { getProject, subscribeToTasks, subscribeToLogs, updateTask, createTask, updateProject } from '../js/api.js'
 import { formatDateShort, taskStatusLabel, formatTimestamp, relativeDate } from '../js/utils.js'
 import { getActive } from '../js/activeTask.js'
 
@@ -137,13 +137,58 @@ function renderHeader(container, project) {
   const el = container.querySelector('#project-header')
   if (!el) return
   const dateStr = buildDateStr(project)
+  const isActive = project.status === 'active'
+
   el.innerHTML = `
     <div class="project-header">
       <div class="project-header-address">${escapeHtml(project.address || 'Ukendt adresse')}</div>
       ${project.description ? `<div class="project-header-desc">${escapeHtml(project.description)}</div>` : ''}
       ${dateStr ? `<div class="project-header-dates">${dateStr}</div>` : ''}
+      ${isActive
+        ? `<button class="btn-complete-project" id="btn-complete-project">Afslut projekt</button>`
+        : `<span class="project-done-badge">FÆRDIG</span>`}
     </div>
   `
+
+  if (isActive) {
+    setupCompleteButton(el, container)
+  }
+}
+
+function setupCompleteButton(headerEl, container) {
+  const btn = headerEl.querySelector('#btn-complete-project')
+  if (!btn) return
+  let armed = false
+  let armTimer = null
+
+  btn.addEventListener('click', async () => {
+    if (!armed) {
+      armed = true
+      btn.textContent = 'Bekræft afslutning →'
+      btn.classList.add('armed')
+      armTimer = setTimeout(() => {
+        armed = false
+        btn.textContent = 'Afslut projekt'
+        btn.classList.remove('armed')
+      }, 3000)
+      return
+    }
+
+    clearTimeout(armTimer)
+    btn.disabled = true
+    btn.textContent = 'Afslutter…'
+
+    try {
+      await updateProject(_projectId, { status: 'completed' })
+      showToast(container, 'Projekt afsluttet')
+      setTimeout(() => window.navigate('home'), 1200)
+    } catch {
+      showToast(container, 'Fejl — prøv igen', true)
+      btn.disabled = false
+      btn.textContent = 'Afslut projekt'
+      armed = false
+    }
+  })
 }
 
 function buildDateStr(project) {

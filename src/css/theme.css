@@ -1135,6 +1135,86 @@ html, body {
   font-weight: 700;
 }
 
+/* ─── STATUS TASK WRAPPER (home screen OPGAVE row with goto button) ─── */
+.status-task-wrapper {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.status-row-task {
+  flex: 1;
+  min-width: 0;
+}
+
+.status-task-goto-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  flex-shrink: 0;
+  background: var(--surface2);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text3);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.status-task-goto-btn:active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--accent-rim);
+}
+
+/* ─── COMPLETE PROJECT BUTTON (project-view header) ─── */
+.btn-complete-project {
+  background: transparent;
+  border: 0.5px solid var(--border2);
+  border-radius: 20px;
+  color: var(--text3);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--mono);
+  letter-spacing: 0.3px;
+  padding: 4px 10px;
+  cursor: pointer;
+  align-self: flex-start;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-complete-project:active {
+  background: var(--surface2);
+}
+
+.btn-complete-project.armed {
+  color: var(--accent);
+  border-color: var(--accent-rim);
+  background: var(--accent-dim);
+}
+
+.btn-complete-project:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.project-done-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  font-family: var(--mono);
+  color: var(--text3);
+  background: var(--surface2);
+  border: 0.5px solid var(--border2);
+  border-radius: 20px;
+  padding: 3px 8px;
+  align-self: flex-start;
+}
+
 /* ─── HOME BODY ─── */
 .home-body {
   display: flex;
