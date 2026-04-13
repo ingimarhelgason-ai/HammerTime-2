@@ -4,23 +4,23 @@ import { getActive } from '../js/activeTask.js'
 
 // ─── STATE ──────────────────────────────────────────────────
 
-let _unsubTasks = null
-let _unsubLogs  = null
-let _taskMap    = {}
-let _logFilter  = null
-let _allLogs    = []
-let _tasks      = []
-let _showDone   = false
-let _projectId  = null
-let _project    = null
+let _unsubTasks  = null
+let _unsubLogs   = null
+let _taskMap     = {}
+let _logFilter   = null
+let _allLogs     = []
+let _tasks       = []
+let _taskFilter  = 'in progress'
+let _projectId   = null
+let _project     = null
 
 // ─── LIFECYCLE ──────────────────────────────────────────────
 
 export async function render(container, params = {}) {
   const { projectId } = params
   if (!projectId) { window.navigate('home'); return }
-  _projectId = projectId
-  _showDone  = false
+  _projectId   = projectId
+  _taskFilter  = 'in progress'
 
   container.innerHTML = buildShell()
   container.querySelector('#btn-back').addEventListener('click', () => window.navigate('home'))
@@ -58,7 +58,7 @@ export function destroy() {
   if (_unsubTasks) { _unsubTasks(); _unsubTasks = null }
   if (_unsubLogs)  { _unsubLogs();  _unsubLogs  = null }
   _taskMap = {}; _logFilter = null; _allLogs = []
-  _tasks = []; _showDone = false; _projectId = null; _project = null
+  _tasks = []; _taskFilter = 'in progress'; _projectId = null; _project = null
 }
 
 // ─── SHELL ──────────────────────────────────────────────────
@@ -145,7 +145,7 @@ function renderHeader(container, project) {
       ${project.description ? `<div class="project-header-desc">${escapeHtml(project.description)}</div>` : ''}
       ${dateStr ? `<div class="project-header-dates">${dateStr}</div>` : ''}
       ${isActive
-        ? `<button class="btn-complete-project" id="btn-complete-project">Afslut projekt</button>`
+        ? `<button class="btn-complete-project" id="btn-complete-project">Marker færdig</button>`
         : `<span class="project-done-badge">FÆRDIG</span>`}
     </div>
   `
@@ -158,35 +158,21 @@ function renderHeader(container, project) {
 function setupCompleteButton(headerEl, container) {
   const btn = headerEl.querySelector('#btn-complete-project')
   if (!btn) return
-  let armed = false
-  let armTimer = null
 
   btn.addEventListener('click', async () => {
-    if (!armed) {
-      armed = true
-      btn.textContent = 'Bekræft afslutning →'
-      btn.classList.add('armed')
-      armTimer = setTimeout(() => {
-        armed = false
-        btn.textContent = 'Afslut projekt'
-        btn.classList.remove('armed')
-      }, 3000)
-      return
-    }
+    if (!confirm('Er du sikker?')) return
 
-    clearTimeout(armTimer)
     btn.disabled = true
-    btn.textContent = 'Afslutter…'
+    btn.textContent = 'Markerer…'
 
     try {
       await updateProject(_projectId, { status: 'completed' })
-      showToast(container, 'Projekt afsluttet')
+      showToast(container, 'Projekt markeret færdigt')
       setTimeout(() => window.navigate('home'), 1200)
     } catch {
       showToast(container, 'Fejl — prøv igen', true)
       btn.disabled = false
-      btn.textContent = 'Afslut projekt'
-      armed = false
+      btn.textContent = 'Marker færdig'
     }
   })
 }
@@ -208,21 +194,31 @@ function renderTaskTab(container, tasks, projectId) {
 }
 
 function renderToolbar(container, tasks) {
-  const toolbar   = container.querySelector('#tasks-toolbar')
+  const toolbar = container.querySelector('#tasks-toolbar')
   if (!toolbar) return
-  const doneCount = tasks.filter(t => t.status === 'done').length
-  if (doneCount === 0) { toolbar.innerHTML = ''; return }
+
+  const filters = [
+    { value: 'in progress', label: 'I gang' },
+    { value: 'not started', label: 'Ikke startet' },
+    { value: 'done',        label: 'Færdig' }
+  ]
 
   toolbar.innerHTML = `
-    <div class="tasks-toolbar-row">
-      <button class="btn-toggle-done${_showDone ? ' is-on' : ''}" id="btn-show-done">
-        ${_showDone ? 'Skjul færdige' : `Vis færdige (${doneCount})`}
-      </button>
+    <div class="task-filter-pills">
+      ${filters.map(f => `
+        <button class="task-filter-pill${_taskFilter === f.value ? ' active' : ''}"
+                data-filter="${escapeAttr(f.value)}">
+          ${escapeHtml(f.label)}
+        </button>
+      `).join('')}
     </div>
   `
-  toolbar.querySelector('#btn-show-done').addEventListener('click', () => {
-    _showDone = !_showDone
-    renderTaskTab(container, _tasks, _projectId)
+
+  toolbar.querySelectorAll('.task-filter-pill').forEach(pill => {
+    pill.addEventListener('click', () => {
+      _taskFilter = pill.dataset.filter
+      renderTaskTab(container, _tasks, _projectId)
+    })
   })
 }
 
@@ -230,23 +226,22 @@ function renderTaskList(container, tasks, projectId) {
   const list = container.querySelector('#task-list')
   if (!list) return
 
-  const active    = getActive()
-  const activeTasks = tasks.filter(t => t.status !== 'done')
-  const doneTasks   = tasks.filter(t => t.status === 'done')
-  const display   = _showDone ? tasks : activeTasks
+  const active  = getActive()
+  const display = tasks.filter(t => t.status === _taskFilter)
 
   if (display.length === 0) {
+    const allEmpty = tasks.length === 0
+    const filterLabels = { 'in progress': 'I gang', 'not started': 'Ikke startet', 'done': 'Færdige' }
     list.innerHTML = `
       <div class="empty-state" style="padding:32px;">
-        ${activeTasks.length === 0 && doneTasks.length > 0 ? `
-          <div class="empty-title">Alle opgaver er færdige</div>
-          <div class="empty-body">Tap "Vis færdige" for at se dem.</div>
-        ` : `
+        ${allEmpty ? `
           <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
           </svg>
           <div class="empty-title">Ingen opgaver</div>
           <div class="empty-body">Tilføj en opgave for at komme i gang.</div>
+        ` : `
+          <div class="empty-title">Ingen ${filterLabels[_taskFilter] || ''} opgaver</div>
         `}
       </div>
     `

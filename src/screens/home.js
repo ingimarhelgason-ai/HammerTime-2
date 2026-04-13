@@ -1,10 +1,12 @@
-import { subscribeToProjects, getTasks, createTask, updateTask } from '../js/api.js'
-import { formatDayFull } from '../js/utils.js'
+import { subscribeToProjects, getTasks, createTask, updateTask, subscribeToTaskLogs } from '../js/api.js'
+import { formatDayFull, formatTimestamp, relativeDate } from '../js/utils.js'
 import { getApiKey } from '../js/claude.js'
 import { getActive, setActive, clearActive } from '../js/activeTask.js'
 
-let _unsubProjects = null
-let _projects      = []
+let _unsubProjects       = null
+let _unsubTaskLogs       = null
+let _activeTaskIdForFeed = null
+let _projects            = []
 
 // ─── LIFECYCLE ──────────────────────────────────────────────
 
@@ -58,6 +60,8 @@ export function render(container) {
 
 export function destroy() {
   if (_unsubProjects) { _unsubProjects(); _unsubProjects = null }
+  if (_unsubTaskLogs) { _unsubTaskLogs(); _unsubTaskLogs = null }
+  _activeTaskIdForFeed = null
   _projects = []
 }
 
@@ -103,14 +107,16 @@ function buildShell() {
 
         <div class="home-actions">
           <button class="btn-hero-camera" id="btn-hero-log">
-            <div class="hero-camera-circle">${iconCameraLg()}</div>
-            <span>Log foto</span>
+            ${iconCamera()}
+            Log foto
           </button>
           <button class="btn-ghost btn-hero-note" id="btn-hero-note">
             ${iconNote()}
             Bare en note
           </button>
         </div>
+
+        <div id="home-task-feed"></div>
 
         <div class="home-projects-section">
           <div class="home-section-label">PROJEKTER</div>
@@ -154,6 +160,7 @@ function renderStatusCard(container) {
       </div>
     `
     area.querySelector('#btn-select-project').addEventListener('click', () => openProjectPicker(container))
+    refreshTaskFeed(container, null)
     return
   }
 
@@ -207,6 +214,68 @@ function renderStatusCard(container) {
       window.navigate('task-view', { taskId: active.taskId, projectId: active.projectId })
     })
   }
+
+  refreshTaskFeed(container, active)
+}
+
+// ─── TASK LOG FEED ──────────────────────────────────────────
+
+function refreshTaskFeed(container, active) {
+  const taskId  = active?.taskId || null
+  const feedEl  = container.querySelector('#home-task-feed')
+  if (!feedEl) return
+
+  if (taskId === _activeTaskIdForFeed) return
+
+  if (_unsubTaskLogs) { _unsubTaskLogs(); _unsubTaskLogs = null }
+  _activeTaskIdForFeed = taskId
+
+  if (!taskId) {
+    feedEl.innerHTML = ''
+    return
+  }
+
+  _unsubTaskLogs = subscribeToTaskLogs(taskId, logs => {
+    renderHomeFeed(feedEl, logs.slice(0, 10))
+  })
+}
+
+function renderHomeFeed(feedEl, logs) {
+  if (!logs || logs.length === 0) {
+    feedEl.innerHTML = ''
+    return
+  }
+
+  feedEl.innerHTML = `
+    <div class="home-task-feed-wrap">
+      <div class="home-section-label">SENESTE LOGS</div>
+      <div class="home-feed-list">
+        ${logs.map(log => buildHomeLogCard(log)).join('')}
+      </div>
+    </div>
+  `
+}
+
+function buildHomeLogCard(log) {
+  const time    = log.timestamp ? formatTimestamp(log.timestamp) : ''
+  const day     = log.timestamp ? relativeDate(log.timestamp)    : ''
+  const timeStr = day && time ? `${day} ${time}` : (time || day || '')
+
+  return `
+    <div class="home-feed-card">
+      ${log.photoUrl
+        ? `<img src="${escapeAttr(log.photoUrl)}" alt="" loading="lazy" class="home-feed-thumb">`
+        : `<div class="home-feed-thumb home-feed-thumb-note">${iconNoteSmall()}</div>`
+      }
+      <div class="home-feed-card-body">
+        ${log.note
+          ? `<div class="home-feed-note">${escapeHtml(log.note)}</div>`
+          : `<div class="home-feed-note home-feed-note-dim">Foto</div>`
+        }
+        <div class="home-feed-time">${escapeHtml(timeStr)}</div>
+      </div>
+    </div>
+  `
 }
 
 // ─── PROJECT PICKER ─────────────────────────────────────────
@@ -497,6 +566,20 @@ function iconCameraLg() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="36" height="36">
     <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
     <circle cx="12" cy="13" r="4"/>
+  </svg>`
+}
+
+function iconCamera() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+    <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+    <circle cx="12" cy="13" r="4"/>
+  </svg>`
+}
+
+function iconNoteSmall() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16">
+    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
   </svg>`
 }
 

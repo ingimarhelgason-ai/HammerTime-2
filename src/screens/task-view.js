@@ -33,6 +33,15 @@ export async function render(container, params = {}) {
 
   container.querySelector('#task-title').textContent = _task.name || 'Opgave'
 
+  const addrEl = container.querySelector('#task-project-addr')
+  if (addrEl && _project?.address) {
+    addrEl.textContent = _project.address
+    addrEl.style.display = ''
+    addrEl.addEventListener('click', () => {
+      window.navigate('project-view', { projectId })
+    })
+  }
+
   renderDescription(container, _task)
   renderStatusSelector(container, _task)
 
@@ -70,7 +79,20 @@ function buildShell() {
           ${iconBack()}
         </button>
         <div class="top-bar-title">
-          <h1 id="task-title" style="font-size:16px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Opgave</h1>
+          <h1 id="task-title" style="font-size:16px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.2;">Opgave</h1>
+          <div id="task-project-addr" style="
+            display:none;
+            font-size:11px;
+            color:var(--accent);
+            opacity:0.65;
+            font-family:var(--mono);
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
+            margin-top:2px;
+            cursor:pointer;
+            -webkit-tap-highlight-color:transparent;
+          "></div>
         </div>
       </div>
 
