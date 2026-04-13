@@ -14,6 +14,9 @@ export function render(container) {
   container.querySelector('#btn-new-project').addEventListener('click', () => {
     window.navigate('project-new')
   })
+  container.querySelector('#btn-settings').addEventListener('click', () => {
+    window.navigate('settings')
+  })
 
   const listEl = container.querySelector('#projects-list')
 
@@ -48,6 +51,9 @@ function buildShell() {
         <div class="empty-state" style="padding:60px 0;">
           <div class="spinner"></div>
         </div>
+      </div>
+      <div class="projects-footer">
+        <button class="btn-text-link" id="btn-settings">Indstillinger</button>
       </div>
     </div>
   `

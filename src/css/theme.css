@@ -2332,3 +2332,73 @@ html, body {
   color: var(--text3);
   flex-shrink: 0;
 }
+
+/* ─── PROJECTS FOOTER ─── */
+.projects-footer {
+  padding: 10px 14px max(14px, env(safe-area-inset-bottom));
+  border-top: 0.5px solid var(--border);
+  display: flex;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.btn-text-link {
+  background: none;
+  border: none;
+  color: var(--text2);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  padding: 6px 16px;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-text-link:active {
+  color: var(--text);
+  background: var(--surface2);
+}
+
+/* ─── LIGHTBOX ─── */
+.lightbox {
+  position: absolute;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.92);
+  animation: screen-in 0.15s ease-out;
+  padding: 20px;
+}
+
+.lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+  user-select: none;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: max(16px, env(safe-area-inset-top));
+  right: 16px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 0.5px solid rgba(255, 255, 255, 0.2);
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.lightbox-close:active {
+  background: rgba(255, 255, 255, 0.22);
+}

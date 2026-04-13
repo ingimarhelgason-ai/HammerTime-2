@@ -13,10 +13,16 @@ let _projects            = []
 export function render(container) {
   container.innerHTML = buildShell()
 
-  container.querySelector('#btn-settings').addEventListener('click', () => window.navigate('settings'))
+  container.querySelector('#btn-projects').addEventListener('click', () => window.navigate('projects'))
 
   const banner = container.querySelector('#api-key-banner')
   if (banner) banner.addEventListener('click', () => window.navigate('settings'))
+
+  // Lightbox delegation — survives innerHTML refreshes on #home-task-feed
+  container.querySelector('#home-task-feed').addEventListener('click', e => {
+    const thumb = e.target.closest('img.home-feed-thumb')
+    if (thumb?.src) openLightbox(container, thumb.src)
+  })
 
   container.querySelector('#btn-hero-log').addEventListener('click', () => {
     const active = getActive()
@@ -40,10 +46,6 @@ export function render(container) {
     })
   })
 
-  container.querySelector('#btn-new-project').addEventListener('click', () => {
-    window.navigate('project-new')
-  })
-
   _unsubProjects = subscribeToProjects(projects => {
     _projects = projects
 
@@ -54,7 +56,6 @@ export function render(container) {
     }
 
     renderStatusCard(container)
-    renderProjectList(container, projects)
   })
 }
 
@@ -76,8 +77,8 @@ function buildShell() {
           <div class="subtitle">${formatDayFull()}</div>
         </div>
         <div class="top-bar-actions">
-          <button class="btn-icon" id="btn-settings" aria-label="Indstillinger">
-            ${iconSettings()}
+          <button class="btn-icon" id="btn-projects" aria-label="Projekter">
+            ${iconFolder()}
           </button>
         </div>
       </div>
@@ -117,15 +118,6 @@ function buildShell() {
         </div>
 
         <div id="home-task-feed"></div>
-
-        <div class="home-projects-section">
-          <div class="home-section-label">PROJEKTER</div>
-          <div id="home-project-list"></div>
-          <button class="btn-dashed-new" id="btn-new-project">
-            ${iconPlus()}
-            Nyt projekt
-          </button>
-        </div>
 
         <div class="safe-bottom"></div>
       </div>
@@ -490,35 +482,21 @@ async function selectTask(container, { projectId, projectAddr, taskId, taskName,
   renderStatusCard(container)
 }
 
-// ─── PROJECT LIST (BOTTOM) ───────────────────────────────────
+// ─── LIGHTBOX ────────────────────────────────────────────────
 
-function renderProjectList(container, projects) {
-  const el = container.querySelector('#home-project-list')
-  if (!el) return
+function openLightbox(container, url) {
+  container.querySelector('#home-lightbox')?.remove()
 
-  if (projects.length === 0) {
-    el.innerHTML = ''
-    return
-  }
-
-  el.innerHTML = projects.map(p => {
-    const isActive = p.status === 'active'
-    return `
-      <div class="home-proj-card" data-id="${escapeAttr(p.id)}">
-        <div class="home-proj-card-inner">
-          <div class="home-proj-addr">${escapeHtml(p.address || 'Ukendt adresse')}</div>
-          ${p.description ? `<div class="home-proj-desc">${escapeHtml(p.description)}</div>` : ''}
-        </div>
-        <span class="home-proj-badge${isActive ? ' home-proj-badge-active' : ' home-proj-badge-done'}">
-          ${isActive ? 'AKTIV' : 'FÆRDIG'}
-        </span>
-      </div>
-    `
-  }).join('')
-
-  el.querySelectorAll('.home-proj-card').forEach(card => {
-    card.addEventListener('click', () => window.navigate('project-view', { projectId: card.dataset.id }))
-  })
+  const lb = document.createElement('div')
+  lb.id = 'home-lightbox'
+  lb.className = 'lightbox'
+  lb.innerHTML = `
+    <img class="lightbox-img" src="${escapeAttr(url)}" alt="">
+    <button class="lightbox-close" aria-label="Luk">${iconClose()}</button>
+  `
+  lb.addEventListener('click', e => { if (!e.target.closest('.lightbox-img')) lb.remove() })
+  lb.querySelector('.lightbox-close').addEventListener('click', () => lb.remove())
+  container.querySelector('#home-screen').appendChild(lb)
 }
 
 // ─── SHEET HELPERS ──────────────────────────────────────────
@@ -555,10 +533,9 @@ function escapeAttr(str) {
 
 // ─── ICONS ──────────────────────────────────────────────────
 
-function iconSettings() {
+function iconFolder() {
   return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-    <circle cx="12" cy="12" r="3"/>
-    <path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/>
+    <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
   </svg>`
 }
 
