@@ -76,7 +76,7 @@ function renderList(el, projects) {
   const completed = projects.filter(p => p.status === 'completed')
 
   el.innerHTML = `
-    <div class="list-content" style="padding-top:14px;">
+    <div class="list-content" style="padding:14px 14px 0;">
       ${active.length > 0 ? `
         <div class="projects-section-label">Aktive</div>
         ${active.map(projectCard).join('')}

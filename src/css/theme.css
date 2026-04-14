@@ -774,12 +774,116 @@ html, body {
 /* ─── TASK ROW ─── */
 .task-row {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 13px 14px;
+  flex-direction: column;
   background: var(--surface);
   border: 0.5px solid var(--border);
   border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.task-row-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+}
+
+/* Expand area */
+.task-row-expand-area {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.22s ease-out, padding 0.22s ease-out;
+  padding: 0 14px;
+}
+
+.task-row-expand-area.open {
+  max-height: 300px;
+  padding: 0 14px 12px;
+}
+
+.task-row-desc-text {
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.task-row-desc-text.dim {
+  color: var(--text3);
+  font-style: italic;
+}
+
+/* Edit button */
+.task-row-edit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
+  color: var(--text3);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.task-row-edit-btn:active {
+  background: var(--surface2);
+  color: var(--text2);
+}
+
+/* Task edit form (inside sheet) */
+.task-edit-form {
+  padding: 4px 0 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.task-edit-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  font-family: var(--mono);
+  color: var(--text3);
+}
+
+.task-edit-input,
+.task-edit-textarea {
+  width: 100%;
+  background: var(--surface2);
+  border: 0.5px solid var(--border2);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+  padding: 11px 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.task-edit-input:focus,
+.task-edit-textarea:focus {
+  border-color: var(--accent-rim);
+}
+
+.task-edit-textarea {
+  font-size: 14px;
+  resize: none;
+  line-height: 1.5;
+  min-height: 100px;
+}
+
+.task-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 8px;
 }
 
 .task-row-name {
@@ -1030,14 +1134,13 @@ html, body {
   background: var(--surface2);
 }
 
-/* ─── TASK ROW (simplified, tappable) ─── */
-.task-row-link {
+/* ─── TASK ROW (tappable toggle area) ─── */
+.task-row-toggle {
   cursor: pointer;
-  transition: background 0.12s;
 }
 
-.task-row-link:active {
-  background: var(--surface2) !important;
+.task-row-toggle:active .task-row-name {
+  color: var(--text2);
 }
 
 .task-row-body {
@@ -1056,7 +1159,7 @@ html, body {
   border-left: 2px solid var(--accent) !important;
 }
 
-/* ─── TASK STATUS PILL (non-interactive label) ─── */
+/* ─── TASK STATUS PILL ─── */
 .task-status-pill {
   font-size: 10px;
   font-weight: 600;
@@ -1066,6 +1169,14 @@ html, body {
   padding: 3px 8px;
   border-radius: 20px;
   flex-shrink: 0;
+  cursor: pointer;
+  transition: opacity 0.12s;
+  -webkit-tap-highlight-color: transparent;
+  white-space: nowrap;
+}
+
+.task-status-pill:active {
+  opacity: 0.65;
 }
 
 .task-status-pill.not-started {
@@ -1758,6 +1869,33 @@ html, body {
   margin-top: 2px;
 }
 
+/* Pinned description card */
+.home-desc-card {
+  background: var(--surface);
+  border: 0.5px solid var(--accent-rim);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px 11px;
+}
+
+.home-desc-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  font-family: var(--mono);
+  color: var(--accent);
+  opacity: 0.65;
+  margin-bottom: 5px;
+}
+
+.home-desc-text {
+  font-size: 13px;
+  color: var(--text2);
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ─── FEED CARDS ─── */
 .feed-card {
   background: var(--surface);
@@ -2305,6 +2443,7 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  text-align: left;
 }
 
 .project-card-addr {

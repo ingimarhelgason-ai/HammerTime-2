@@ -1,4 +1,4 @@
-import { subscribeToProjects, getTasks, createTask, updateTask, subscribeToTaskLogs } from '../js/api.js'
+import { subscribeToProjects, getTasks, getTask, createTask, updateTask, subscribeToTaskLogs } from '../js/api.js'
 import { formatDayFull, formatTimestamp, relativeDate } from '../js/utils.js'
 import { getApiKey } from '../js/claude.js'
 import { getActive, setActive, clearActive } from '../js/activeTask.js'
@@ -6,6 +6,7 @@ import { getActive, setActive, clearActive } from '../js/activeTask.js'
 let _unsubProjects       = null
 let _unsubTaskLogs       = null
 let _activeTaskIdForFeed = null
+let _activeTaskDesc      = null
 let _projects            = []
 
 // ─── LIFECYCLE ──────────────────────────────────────────────
@@ -63,6 +64,7 @@ export function destroy() {
   if (_unsubProjects) { _unsubProjects(); _unsubProjects = null }
   if (_unsubTaskLogs) { _unsubTaskLogs(); _unsubTaskLogs = null }
   _activeTaskIdForFeed = null
+  _activeTaskDesc = null
   _projects = []
 }
 
@@ -203,7 +205,7 @@ function renderStatusCard(container) {
 
   if (hasTask) {
     area.querySelector('#btn-goto-task').addEventListener('click', () => {
-      window.navigate('task-view', { taskId: active.taskId, projectId: active.projectId })
+      window.navigate('project-view', { projectId: active.projectId })
     })
   }
 
@@ -212,20 +214,30 @@ function renderStatusCard(container) {
 
 // ─── TASK LOG FEED ──────────────────────────────────────────
 
-function refreshTaskFeed(container, active) {
-  const taskId  = active?.taskId || null
-  const feedEl  = container.querySelector('#home-task-feed')
+async function refreshTaskFeed(container, active) {
+  const taskId = active?.taskId || null
+  const feedEl = container.querySelector('#home-task-feed')
   if (!feedEl) return
 
   if (taskId === _activeTaskIdForFeed) return
 
   if (_unsubTaskLogs) { _unsubTaskLogs(); _unsubTaskLogs = null }
   _activeTaskIdForFeed = taskId
+  _activeTaskDesc = null
 
   if (!taskId) {
     feedEl.innerHTML = ''
     return
   }
+
+  // Fetch task description before subscribing so first render includes it
+  try {
+    const task = await getTask(taskId)
+    _activeTaskDesc = task?.description || null
+  } catch { /* ignore */ }
+
+  // Guard: user may have switched away during the async fetch
+  if (taskId !== _activeTaskIdForFeed) return
 
   _unsubTaskLogs = subscribeToTaskLogs(taskId, logs => {
     renderHomeFeed(feedEl, logs.slice(0, 10))
@@ -233,7 +245,10 @@ function refreshTaskFeed(container, active) {
 }
 
 function renderHomeFeed(feedEl, logs) {
-  if (!logs || logs.length === 0) {
+  const hasDesc = !!_activeTaskDesc
+  const hasLogs = logs && logs.length > 0
+
+  if (!hasDesc && !hasLogs) {
     feedEl.innerHTML = ''
     return
   }
@@ -242,8 +257,18 @@ function renderHomeFeed(feedEl, logs) {
     <div class="home-task-feed-wrap">
       <div class="home-section-label">SENESTE LOGS</div>
       <div class="home-feed-list">
-        ${logs.map(log => buildHomeLogCard(log)).join('')}
+        ${hasDesc ? buildHomeDescCard(_activeTaskDesc) : ''}
+        ${hasLogs ? logs.map(log => buildHomeLogCard(log)).join('') : ''}
       </div>
+    </div>
+  `
+}
+
+function buildHomeDescCard(desc) {
+  return `
+    <div class="home-desc-card">
+      <div class="home-desc-label">Instruktioner</div>
+      <div class="home-desc-text">${escapeHtml(desc)}</div>
     </div>
   `
 }
@@ -472,7 +497,7 @@ async function selectTask(container, { projectId, projectAddr, taskId, taskName,
     try { await updateTask(prev.taskId, { status: 'in progress' }) } catch { /* ignore */ }
   }
 
-  if (taskStatus === 'not started') {
+  if (taskStatus === 'not started' || taskStatus === 'done') {
     try { await updateTask(taskId, { status: 'in progress' }) } catch { /* ignore */ }
     taskStatus = 'in progress'
   }
