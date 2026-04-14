@@ -24,7 +24,7 @@ export function render(container) {
     const thumb = e.target.closest('img.home-feed-thumb')
     if (thumb?.src) { openLightbox(container, thumb.src); return }
 
-    if (e.target.closest('.home-desc-card')) openDescEditSheet(container)
+    if (e.target.closest('.home-desc-card')) openDescViewSheet(container)
   })
 
   container.querySelector('#btn-hero-log').addEventListener('click', () => {
@@ -247,19 +247,13 @@ async function refreshTaskFeed(container, active) {
 }
 
 function renderHomeFeed(feedEl, logs) {
-  const hasDesc = !!_activeTaskDesc
   const hasLogs = logs && logs.length > 0
-
-  if (!hasDesc && !hasLogs) {
-    feedEl.innerHTML = ''
-    return
-  }
 
   feedEl.innerHTML = `
     <div class="home-task-feed-wrap">
       <div class="home-section-label">SENESTE LOGS</div>
       <div class="home-feed-list">
-        ${hasDesc ? buildHomeDescCard(_activeTaskDesc) : ''}
+        ${buildHomeDescCard(_activeTaskDesc)}
         ${hasLogs ? logs.map(log => buildHomeLogCard(log)).join('') : ''}
       </div>
     </div>
@@ -267,10 +261,11 @@ function renderHomeFeed(feedEl, logs) {
 }
 
 function buildHomeDescCard(desc) {
+  const empty = !desc
   return `
     <div class="home-desc-card">
       <div class="home-desc-label">Instruktioner</div>
-      <div class="home-desc-text">${escapeHtml(desc)}</div>
+      <div class="home-desc-text${empty ? ' dim' : ''}">${escapeHtml(desc || 'Ingen instruktioner endnu')}</div>
     </div>
   `
 }
@@ -511,53 +506,18 @@ async function selectTask(container, { projectId, projectAddr, taskId, taskName,
 
 // ─── DESC EDIT SHEET ────────────────────────────────────────
 
-function openDescEditSheet(container) {
-  const taskId = _activeTaskIdForFeed
-  if (!taskId) return
-
+function openDescViewSheet(container) {
   const body = openSheet(container, 'Instruktioner')
   if (!body) return
 
+  const desc = _activeTaskDesc
   body.innerHTML = `
-    <div class="task-edit-form">
-      <textarea id="desc-edit-input" class="task-edit-textarea"
-                placeholder="Instruktioner, mål, materialer…" rows="7"
-                style="min-height:140px;">${escapeHtml(_activeTaskDesc || '')}</textarea>
-      <div class="task-edit-actions">
-        <button class="btn-cancel-task" id="desc-edit-cancel">Annuller</button>
-        <button class="btn-save-task" id="desc-edit-save">Gem</button>
-      </div>
+    <div style="padding:4px 0 16px;">
+      <p style="font-size:15px;color:${desc ? 'var(--text)' : 'var(--text3)'};line-height:1.65;white-space:pre-wrap;word-break:break-word;margin:0;">
+        ${desc ? escapeHtml(desc) : 'Ingen instruktioner endnu'}
+      </p>
     </div>
   `
-
-  body.querySelector('#desc-edit-cancel').addEventListener('click', () => closeSheet(container))
-
-  body.querySelector('#desc-edit-save').addEventListener('click', async () => {
-    const desc    = body.querySelector('#desc-edit-input').value.trim()
-    const saveBtn = body.querySelector('#desc-edit-save')
-    saveBtn.disabled = true; saveBtn.textContent = '...'
-
-    try {
-      await updateTask(taskId, { description: desc || null })
-      _activeTaskDesc = desc || null
-      closeSheet(container)
-
-      // Update the pinned card in-place without a full re-render
-      const feedEl = container.querySelector('#home-task-feed')
-      if (feedEl) {
-        const card = feedEl.querySelector('.home-desc-card')
-        if (_activeTaskDesc && card) {
-          card.querySelector('.home-desc-text').textContent = _activeTaskDesc
-        } else if (!_activeTaskDesc && card) {
-          card.remove()
-        }
-      }
-    } catch {
-      saveBtn.disabled = false; saveBtn.textContent = 'Gem'
-    }
-  })
-
-  setTimeout(() => body.querySelector('#desc-edit-input')?.focus(), 80)
 }
 
 // ─── LIGHTBOX ────────────────────────────────────────────────

@@ -1161,7 +1161,7 @@ html, body {
   border-left: 2px solid var(--accent) !important;
 }
 
-/* ─── TASK STATUS PILL ─── */
+/* ─── TASK STATUS PILL (display only) ─── */
 .task-status-pill {
   font-size: 10px;
   font-weight: 600;
@@ -1171,14 +1171,8 @@ html, body {
   padding: 3px 8px;
   border-radius: 20px;
   flex-shrink: 0;
-  cursor: pointer;
-  transition: opacity 0.12s;
-  -webkit-tap-highlight-color: transparent;
   white-space: nowrap;
-}
-
-.task-status-pill:active {
-  opacity: 0.65;
+  user-select: none;
 }
 
 .task-status-pill.not-started {
@@ -1903,6 +1897,88 @@ html, body {
   line-height: 1.55;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.home-desc-text.dim {
+  color: var(--text3);
+  font-style: italic;
+}
+
+/* ─── CONFIRM DIALOG ─── */
+.confirm-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 300;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 24px;
+  animation: screen-in 0.15s ease-out;
+}
+
+.confirm-card {
+  background: var(--surface);
+  border: 0.5px solid var(--border2);
+  border-radius: var(--radius);
+  padding: 24px 20px 18px;
+  width: 100%;
+  max-width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.confirm-question {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+  letter-spacing: -0.2px;
+  line-height: 1.4;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.confirm-cancel {
+  flex: 1;
+  padding: 13px 8px;
+  background: var(--surface2);
+  border: 0.5px solid var(--border2);
+  border-radius: var(--radius-sm);
+  color: var(--text2);
+  font-size: 14px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.confirm-cancel:active {
+  background: var(--surface3);
+}
+
+.confirm-ok {
+  flex: 1;
+  padding: 13px 8px;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: #000;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.confirm-ok:active {
+  background: var(--accent-dark);
 }
 
 /* ─── FEED CARDS ─── */

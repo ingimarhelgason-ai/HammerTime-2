@@ -174,7 +174,8 @@ function setupCompleteButton(headerEl, container) {
   if (!btn) return
 
   btn.addEventListener('click', async () => {
-    if (!confirm('Er du sikker?')) return
+    const confirmed = await showConfirmDialog(container, 'Marker projektet som færdigt?', 'Marker færdig')
+    if (!confirmed) return
 
     btn.disabled = true
     btn.textContent = 'Markerer…'
@@ -188,6 +189,29 @@ function setupCompleteButton(headerEl, container) {
       btn.disabled = false
       btn.textContent = 'Marker færdig'
     }
+  })
+}
+
+function showConfirmDialog(container, question, okLabel) {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div')
+    overlay.className = 'confirm-overlay'
+    overlay.innerHTML = `
+      <div class="confirm-card">
+        <div class="confirm-question">${escapeHtml(question)}</div>
+        <div class="confirm-actions">
+          <button class="confirm-cancel">Annuller</button>
+          <button class="confirm-ok">${escapeHtml(okLabel)}</button>
+        </div>
+      </div>
+    `
+
+    const dismiss = result => { overlay.remove(); resolve(result) }
+    overlay.querySelector('.confirm-cancel').addEventListener('click', () => dismiss(false))
+    overlay.querySelector('.confirm-ok').addEventListener('click', () => dismiss(true))
+    overlay.addEventListener('click', e => { if (e.target === overlay) dismiss(false) })
+
+    container.querySelector('#project-view-screen').appendChild(overlay)
   })
 }
 
@@ -275,22 +299,6 @@ function renderTaskList(container, tasks, projectId) {
     })
   })
 
-  // Status pill cycles: not started → in progress → done → not started
-  list.querySelectorAll('.task-status-cycle').forEach(pill => {
-    pill.addEventListener('click', async e => {
-      e.stopPropagation()
-      const tid  = pill.dataset.taskId
-      const task = _tasks.find(t => t.id === tid)
-      if (!task) return
-      const next = cycleStatus(task.status)
-      if (next === 'done' && !confirm('Marker som færdig?')) return
-      task.status = next
-      renderTaskList(container, _tasks, _projectId)
-      try { await updateTask(tid, { status: next }) }
-      catch { showToast(container, 'Fejl ved opdatering', true) }
-    })
-  })
-
   // Edit button opens sheet
   list.querySelectorAll('.task-row-edit-btn').forEach(btn => {
     btn.addEventListener('click', e => {
@@ -315,12 +323,9 @@ function buildTaskRow(task, active) {
         <div class="task-row-body">
           <div class="task-row-name${isDone ? ' done' : ''}">${escapeHtml(task.name || 'Unavngivet opgave')}</div>
         </div>
-        <button class="task-status-pill ${sc} task-status-cycle"
-                data-task-id="${escapeAttr(task.id)}"
-                data-status="${escapeAttr(task.status)}"
-                aria-label="Ændre status">
+        <span class="task-status-pill ${sc}">
           ${taskStatusLabel(task.status)}
-        </button>
+        </span>
         <button class="task-row-edit-btn" data-task-id="${escapeAttr(task.id)}" aria-label="Rediger">
           ${iconEdit()}
         </button>
