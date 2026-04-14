@@ -1,4 +1,4 @@
-import { getProject, subscribeToTasks, subscribeToLogs, updateTask, createTask, updateProject } from '../js/api.js'
+import { getProject, subscribeToTasks, subscribeToLogs, updateTask, createTask } from '../js/api.js'
 import { formatDateShort, formatTimestamp, relativeDate } from '../js/utils.js'
 import { getActive } from '../js/activeTask.js'
 
@@ -162,36 +162,17 @@ function buildShell() {
 function renderHeader() {
   const el = _container?.querySelector('#project-header')
   if (!el) return
-  const dateStr  = buildDateStr(_project)
-  const isActive = _project.status === 'active'
+  const dateStr    = buildDateStr(_project)
+  const isCompleted = _project.status === 'completed'
 
   el.innerHTML = `
     <div class="project-header">
       <div class="project-header-address">${escapeHtml(_project.address || 'Ukendt adresse')}</div>
       ${_project.description ? `<div class="project-header-desc">${escapeHtml(_project.description)}</div>` : ''}
       ${dateStr ? `<div class="project-header-dates">${dateStr}</div>` : ''}
-      ${isActive
-        ? `<button class="btn-complete-project" id="btn-complete-project">Marker færdig</button>`
-        : `<span class="project-done-badge">FÆRDIG</span>`}
+      ${isCompleted ? `<span class="project-done-badge">FÆRDIG</span>` : ''}
     </div>
   `
-
-  if (isActive) {
-    el.querySelector('#btn-complete-project').addEventListener('click', async () => {
-      const confirmed = await showConfirmDialog('Marker projektet som færdigt?', 'Marker færdig')
-      if (!confirmed) return
-      const btn = el.querySelector('#btn-complete-project')
-      btn.disabled = true; btn.textContent = 'Markerer…'
-      try {
-        await updateProject(_projectId, { status: 'completed' })
-        showToast('Projekt markeret færdigt')
-        setTimeout(() => window.navigate('home'), 1200)
-      } catch {
-        showToast('Fejl — prøv igen', true)
-        btn.disabled = false; btn.textContent = 'Marker færdig'
-      }
-    })
-  }
 }
 
 function buildDateStr(project) {
@@ -201,29 +182,6 @@ function buildDateStr(project) {
   if (start)        return `Fra ${start}`
   if (end)          return `Til ${end}`
   return null
-}
-
-// ─── CONFIRM DIALOG ─────────────────────────────────────────
-
-function showConfirmDialog(question, okLabel) {
-  return new Promise(resolve => {
-    const overlay = document.createElement('div')
-    overlay.className = 'confirm-overlay'
-    overlay.innerHTML = `
-      <div class="confirm-card">
-        <div class="confirm-question">${escapeHtml(question)}</div>
-        <div class="confirm-actions">
-          <button class="confirm-cancel">Annuller</button>
-          <button class="confirm-ok">${escapeHtml(okLabel)}</button>
-        </div>
-      </div>
-    `
-    const dismiss = result => { overlay.remove(); resolve(result) }
-    overlay.querySelector('.confirm-cancel').addEventListener('click', () => dismiss(false))
-    overlay.querySelector('.confirm-ok').addEventListener('click', () => dismiss(true))
-    overlay.addEventListener('click', e => { if (e.target === overlay) dismiss(false) })
-    _container.querySelector('#project-view-screen').appendChild(overlay)
-  })
 }
 
 // ─── KANBAN ──────────────────────────────────────────────────

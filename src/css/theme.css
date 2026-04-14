@@ -2506,6 +2506,7 @@ html, body {
 
 .project-card {
   display: flex;
+  flex-direction: row;
   align-items: center;
   gap: 10px;
   background: var(--surface);
@@ -2515,6 +2516,7 @@ html, body {
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
   -webkit-tap-highlight-color: transparent;
+  text-align: left;
 }
 
 .project-card:active {
@@ -2917,4 +2919,133 @@ html, body {
 /* ─── FEED SHEET (tall variant) ─── */
 .sheet-tall {
   max-height: 88vh;
+}
+
+/* ─── KANBAN COLUMN COLORS ─── */
+.kanban-col[data-status="in progress"] .kanban-col-header {
+  background: var(--accent-dim);
+  border-bottom-color: var(--accent-rim);
+}
+.kanban-col[data-status="in progress"] .kanban-col-title {
+  color: var(--accent);
+}
+.kanban-col[data-status="in progress"] .kanban-col-count {
+  color: var(--accent);
+  background: rgba(240,192,64,0.15);
+}
+
+.kanban-col[data-status="done"] .kanban-col-header {
+  background: var(--green-dim);
+  border-bottom-color: rgba(58,158,106,0.22);
+}
+.kanban-col[data-status="done"] .kanban-col-title {
+  color: var(--green);
+}
+.kanban-col[data-status="done"] .kanban-col-count {
+  color: var(--green);
+  background: rgba(58,158,106,0.15);
+}
+
+/* Card left-border tint by column — uses inset box-shadow to avoid layout shift */
+.kanban-col[data-status="not started"] .kanban-card:not(.active-task) {
+  box-shadow: inset 2px 0 0 var(--border2);
+}
+.kanban-col[data-status="in progress"] .kanban-card:not(.active-task) {
+  box-shadow: inset 2px 0 0 rgba(240,192,64,0.35);
+}
+.kanban-col[data-status="done"] .kanban-card:not(.active-task) {
+  box-shadow: inset 2px 0 0 rgba(58,158,106,0.35);
+}
+
+/* ─── PROJECTS: COMPLETED SECTION ─── */
+.projects-completed-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px 2px;
+  background: none;
+  border: none;
+  border-top: 0.5px solid var(--border);
+  margin-top: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text2);
+  cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.15s;
+}
+
+.projects-completed-toggle:active {
+  color: var(--text);
+}
+
+.projects-toggle-icon {
+  display: flex;
+  align-items: center;
+  color: var(--text3);
+}
+
+.project-card--done {
+  opacity: 0.65;
+}
+
+.project-card-addr--done {
+  text-decoration: line-through;
+  text-decoration-color: var(--text3);
+  color: var(--text2);
+}
+
+.project-done-badge-sm {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--green);
+  background: var(--green-dim);
+  border: 0.5px solid rgba(58,158,106,0.25);
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-family: var(--mono);
+}
+
+/* ─── PROJECT ACTION SHEET ─── */
+.action-sheet-addr {
+  padding: 14px 18px 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text2);
+  border-bottom: 0.5px solid var(--border);
+  text-align: left;
+}
+
+.action-sheet-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 16px 18px;
+  background: none;
+  border: none;
+  font-size: 16px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+  color: var(--text);
+  border-bottom: 0.5px solid var(--border);
+}
+
+.action-sheet-item:last-child {
+  border-bottom: none;
+}
+
+.action-sheet-item:active {
+  background: var(--surface2);
+}
+
+.action-sheet-item--danger {
+  color: var(--danger);
 }
