@@ -13,10 +13,6 @@ let _tasks       = []
 let _projectId   = null
 let _project     = null
 let _container   = null
-let _drag        = null        // active drag: { taskId, el, ghost, offsetX, offsetY, colStatus, dropColStatus }
-let _pendingDrag = null        // potential drag: { taskId, el, startX, startY }
-let _onTouchMove = null
-let _onTouchEnd  = null
 
 // ─── COLUMN DEFINITIONS ─────────────────────────────────────
 
@@ -38,8 +34,6 @@ export async function render(container, params = {}) {
   _allLogs     = []
   _tasks       = []
   _taskMap     = {}
-  _drag        = null
-  _pendingDrag = null
 
   container.innerHTML = buildShell()
 
@@ -57,6 +51,12 @@ export async function render(container, params = {}) {
   container.querySelector('#btn-task-edit-close').addEventListener('click', () => closeTaskEditSheet())
   container.querySelector('#task-edit-overlay').addEventListener('click', e => {
     if (e.target.id === 'task-edit-overlay') closeTaskEditSheet()
+  })
+
+  // Move sheet
+  container.querySelector('#btn-move-close').addEventListener('click', () => closeMoveSheet())
+  container.querySelector('#move-overlay').addEventListener('click', e => {
+    if (e.target.id === 'move-overlay') closeMoveSheet()
   })
 
   try {
@@ -82,23 +82,13 @@ export async function render(container, params = {}) {
       renderFeedInSheet()
     }
   })
-
-  setupDragAndDrop()
 }
 
 export function destroy() {
-  if (_unsubTasks)  { _unsubTasks();  _unsubTasks  = null }
-  if (_unsubLogs)   { _unsubLogs();   _unsubLogs   = null }
-  if (_onTouchMove) { document.removeEventListener('touchmove',   _onTouchMove); _onTouchMove = null }
-  if (_onTouchEnd)  {
-    document.removeEventListener('touchend',   _onTouchEnd)
-    document.removeEventListener('touchcancel', _onTouchEnd)
-    _onTouchEnd = null
-  }
-  _drag?.ghost?.remove()
+  if (_unsubTasks) { _unsubTasks(); _unsubTasks = null }
+  if (_unsubLogs)  { _unsubLogs();  _unsubLogs  = null }
   _taskMap = {}; _logFilter = null; _allLogs = []; _tasks = []
   _projectId = null; _project = null; _container = null
-  _drag = null; _pendingDrag = null
 }
 
 // ─── SHELL ──────────────────────────────────────────────────
@@ -137,6 +127,18 @@ function buildShell() {
             <button class="btn-icon sheet-close" id="btn-task-edit-close">${iconClose()}</button>
           </div>
           <div class="sheet-body" id="task-edit-body"></div>
+        </div>
+      </div>
+
+      <!-- Move sheet -->
+      <div class="sheet-overlay" id="move-overlay">
+        <div class="sheet">
+          <div class="sheet-handle"></div>
+          <div class="sheet-header">
+            <span class="sheet-title">Flyt opgave til…</span>
+            <button class="btn-icon sheet-close" id="btn-move-close">${iconClose()}</button>
+          </div>
+          <div class="sheet-body" id="move-body"></div>
         </div>
       </div>
 
@@ -266,7 +268,7 @@ function renderKanban() {
     })
   })
 
-  // Edit buttons
+  // Edit button → edit sheet (stopPropagation prevents move sheet)
   board.querySelectorAll('.kanban-card-edit').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation()
@@ -275,9 +277,12 @@ function renderKanban() {
     })
   })
 
-  // Touch drag-and-drop
+  // Card tap → move sheet
   board.querySelectorAll('.kanban-card').forEach(card => {
-    card.addEventListener('touchstart', onCardTouchStart, { passive: true })
+    card.addEventListener('click', () => {
+      const task = _tasks.find(t => t.id === card.dataset.taskId)
+      if (task) openMoveSheet(task)
+    })
   })
 }
 
@@ -347,145 +352,43 @@ function buildKanbanCard(task, active) {
   `
 }
 
-// ─── DRAG AND DROP ──────────────────────────────────────────
+// ─── MOVE SHEET ──────────────────────────────────────────────
 
-function setupDragAndDrop() {
-  _onTouchMove = onDocTouchMove
-  _onTouchEnd  = onDocTouchEnd
-  document.addEventListener('touchmove',   _onTouchMove, { passive: false })
-  document.addEventListener('touchend',    _onTouchEnd,  { passive: true  })
-  document.addEventListener('touchcancel', _onTouchEnd,  { passive: true  })
-}
+function openMoveSheet(task) {
+  const overlay = _container?.querySelector('#move-overlay')
+  const body    = _container?.querySelector('#move-body')
+  if (!overlay) return
 
-function onCardTouchStart(e) {
-  if (e.touches.length !== 1) return
-  const touch = e.touches[0]
-  const card  = e.currentTarget
-  _pendingDrag = {
-    taskId: card.dataset.taskId,
-    el:     card,
-    startX: touch.clientX,
-    startY: touch.clientY,
-  }
-}
+  body.innerHTML = COLS.map(col => `
+    <div class="move-option${task.status === col.status ? ' current' : ''}"
+         data-status="${escapeAttr(col.status)}">
+      <span class="move-option-label">${escapeHtml(col.label)}</span>
+      ${task.status === col.status ? `<span class="move-option-check">${iconCheck()}</span>` : ''}
+    </div>
+  `).join('')
 
-function onDocTouchMove(e) {
-  if (!_pendingDrag && !_drag) return
+  overlay.classList.add('open')
 
-  const touch = e.touches[0]
-
-  if (_pendingDrag && !_drag) {
-    const dx = touch.clientX - _pendingDrag.startX
-    const dy = touch.clientY - _pendingDrag.startY
-
-    // Vertical scroll takes priority — cancel potential drag
-    if (Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) {
-      _pendingDrag = null
-      return
-    }
-
-    // Horizontal movement enough to initiate drag
-    if (Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy)) {
-      startDrag(_pendingDrag.taskId, _pendingDrag.el, touch)
-      _pendingDrag = null
-    }
-    return
-  }
-
-  if (_drag) {
-    e.preventDefault()
-    moveDragGhost(touch)
-    highlightDropTarget(touch)
-  }
-}
-
-function onDocTouchEnd(e) {
-  _pendingDrag = null
-  if (!_drag) return
-  finalizeDrop(e.changedTouches[0])
-}
-
-function startDrag(taskId, cardEl, touch) {
-  const rect  = cardEl.getBoundingClientRect()
-  const ghost = cardEl.cloneNode(true)
-
-  Object.assign(ghost.style, {
-    position:     'fixed',
-    left:         `${rect.left}px`,
-    top:          `${rect.top}px`,
-    width:        `${rect.width}px`,
-    pointerEvents:'none',
-    opacity:      '0.88',
-    zIndex:       '999',
-    transform:    'scale(1.04)',
-    boxShadow:    '0 8px 28px rgba(0,0,0,0.7)',
-    transition:   'none',
+  body.querySelectorAll('.move-option').forEach(opt => {
+    opt.addEventListener('click', async () => {
+      const newStatus = opt.dataset.status
+      closeMoveSheet()
+      if (newStatus === task.status) return
+      try {
+        await updateTask(task.id, { status: newStatus })
+        const active = getActive()
+        if (active?.taskId === task.id && newStatus === 'done') {
+          showNextTaskNotice()
+        }
+      } catch {
+        showToast('Fejl ved flytning', true)
+      }
+    })
   })
-  ghost.classList.add('kanban-card-dragging')
-  document.body.appendChild(ghost)
-  cardEl.classList.add('kanban-card-placeholder')
-
-  _drag = {
-    taskId,
-    el:           cardEl,
-    ghost,
-    offsetX:      touch.clientX - rect.left,
-    offsetY:      touch.clientY - rect.top,
-    colStatus:    cardEl.closest('.kanban-col')?.dataset?.status || null,
-    dropColStatus: null,
-  }
 }
 
-function moveDragGhost(touch) {
-  if (!_drag?.ghost) return
-  _drag.ghost.style.left = `${touch.clientX - _drag.offsetX}px`
-  _drag.ghost.style.top  = `${touch.clientY - _drag.offsetY}px`
-}
-
-function highlightDropTarget(touch) {
-  if (!_drag) return
-  // Hide ghost temporarily to hit-test beneath it
-  _drag.ghost.style.visibility = 'hidden'
-  const el = document.elementFromPoint(touch.clientX, touch.clientY)
-  _drag.ghost.style.visibility = ''
-
-  const col = el?.closest('.kanban-col')
-
-  _container?.querySelectorAll('.kanban-col.drop-target').forEach(c => c.classList.remove('drop-target'))
-
-  if (col) {
-    col.classList.add('drop-target')
-    _drag.dropColStatus = col.dataset.status
-  } else {
-    _drag.dropColStatus = null
-  }
-}
-
-async function finalizeDrop(touch) {
-  const drag = _drag
-  _drag = null
-
-  drag.ghost.remove()
-  drag.el.classList.remove('kanban-card-placeholder')
-  _container?.querySelectorAll('.kanban-col.drop-target').forEach(c => c.classList.remove('drop-target'))
-
-  const newStatus = drag.dropColStatus
-  if (!newStatus || newStatus === drag.colStatus) return
-
-  const task = _tasks.find(t => t.id === drag.taskId)
-  if (!task) return
-
-  try {
-    await updateTask(drag.taskId, { status: newStatus })
-
-    // Prompt to pick next task if active task was moved to done
-    const active = getActive()
-    if (active?.taskId === drag.taskId && newStatus === 'done') {
-      showNextTaskNotice()
-    }
-  } catch {
-    showToast('Fejl ved flytning', true)
-  }
+function closeMoveSheet() {
+  _container?.querySelector('#move-overlay')?.classList.remove('open')
 }
 
 // ─── NEXT TASK NOTICE ────────────────────────────────────────
@@ -699,4 +602,8 @@ function iconPlus() {
 
 function iconClock() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`
+}
+
+function iconCheck() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M20 6L9 17l-5-5"/></svg>`
 }
