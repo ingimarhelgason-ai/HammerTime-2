@@ -264,10 +264,11 @@ function renderTaskList(container, tasks, projectId) {
 
   list.innerHTML = display.map(t => buildTaskRow(t, active)).join('')
 
-  // Expand / collapse on name tap
-  list.querySelectorAll('.task-row-toggle').forEach(toggle => {
-    toggle.addEventListener('click', () => {
-      const tid = toggle.dataset.taskId
+  // Expand / collapse — listener on the whole main row so the tap target is generous.
+  // Pill and edit button use stopPropagation to prevent this from firing.
+  list.querySelectorAll('.task-row-main').forEach(main => {
+    main.addEventListener('click', () => {
+      const tid = main.closest('.task-row').dataset.taskId
       if (_expandedTaskIds.has(tid)) _expandedTaskIds.delete(tid)
       else _expandedTaskIds.add(tid)
       renderTaskList(container, _tasks, _projectId)
@@ -311,7 +312,7 @@ function buildTaskRow(task, active) {
     <div class="task-row${isActive ? ' task-row-active' : ''}${isExpanded ? ' is-expanded' : ''}"
          data-task-id="${escapeAttr(task.id)}">
       <div class="task-row-main">
-        <div class="task-row-body task-row-toggle" data-task-id="${escapeAttr(task.id)}">
+        <div class="task-row-body">
           <div class="task-row-name${isDone ? ' done' : ''}">${escapeHtml(task.name || 'Unavngivet opgave')}</div>
         </div>
         <button class="task-status-pill ${sc} task-status-cycle"

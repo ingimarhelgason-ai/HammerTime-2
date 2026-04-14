@@ -19,10 +19,12 @@ export function render(container) {
   const banner = container.querySelector('#api-key-banner')
   if (banner) banner.addEventListener('click', () => window.navigate('settings'))
 
-  // Lightbox delegation — survives innerHTML refreshes on #home-task-feed
+  // Feed click delegation — survives innerHTML refreshes on #home-task-feed
   container.querySelector('#home-task-feed').addEventListener('click', e => {
     const thumb = e.target.closest('img.home-feed-thumb')
-    if (thumb?.src) openLightbox(container, thumb.src)
+    if (thumb?.src) { openLightbox(container, thumb.src); return }
+
+    if (e.target.closest('.home-desc-card')) openDescEditSheet(container)
   })
 
   container.querySelector('#btn-hero-log').addEventListener('click', () => {
@@ -505,6 +507,57 @@ async function selectTask(container, { projectId, projectAddr, taskId, taskName,
   setActive({ projectId, taskId, taskName, projectAddr, taskStatus })
   closeSheet(container)
   renderStatusCard(container)
+}
+
+// ─── DESC EDIT SHEET ────────────────────────────────────────
+
+function openDescEditSheet(container) {
+  const taskId = _activeTaskIdForFeed
+  if (!taskId) return
+
+  const body = openSheet(container, 'Instruktioner')
+  if (!body) return
+
+  body.innerHTML = `
+    <div class="task-edit-form">
+      <textarea id="desc-edit-input" class="task-edit-textarea"
+                placeholder="Instruktioner, mål, materialer…" rows="7"
+                style="min-height:140px;">${escapeHtml(_activeTaskDesc || '')}</textarea>
+      <div class="task-edit-actions">
+        <button class="btn-cancel-task" id="desc-edit-cancel">Annuller</button>
+        <button class="btn-save-task" id="desc-edit-save">Gem</button>
+      </div>
+    </div>
+  `
+
+  body.querySelector('#desc-edit-cancel').addEventListener('click', () => closeSheet(container))
+
+  body.querySelector('#desc-edit-save').addEventListener('click', async () => {
+    const desc    = body.querySelector('#desc-edit-input').value.trim()
+    const saveBtn = body.querySelector('#desc-edit-save')
+    saveBtn.disabled = true; saveBtn.textContent = '...'
+
+    try {
+      await updateTask(taskId, { description: desc || null })
+      _activeTaskDesc = desc || null
+      closeSheet(container)
+
+      // Update the pinned card in-place without a full re-render
+      const feedEl = container.querySelector('#home-task-feed')
+      if (feedEl) {
+        const card = feedEl.querySelector('.home-desc-card')
+        if (_activeTaskDesc && card) {
+          card.querySelector('.home-desc-text').textContent = _activeTaskDesc
+        } else if (!_activeTaskDesc && card) {
+          card.remove()
+        }
+      }
+    } catch {
+      saveBtn.disabled = false; saveBtn.textContent = 'Gem'
+    }
+  })
+
+  setTimeout(() => body.querySelector('#desc-edit-input')?.focus(), 80)
 }
 
 // ─── LIGHTBOX ────────────────────────────────────────────────
