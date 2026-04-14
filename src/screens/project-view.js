@@ -1,67 +1,104 @@
 import { getProject, subscribeToTasks, subscribeToLogs, updateTask, createTask, updateProject } from '../js/api.js'
-import { formatDateShort, taskStatusLabel, formatTimestamp, relativeDate } from '../js/utils.js'
+import { formatDateShort, formatTimestamp, relativeDate } from '../js/utils.js'
 import { getActive } from '../js/activeTask.js'
 
 // ─── STATE ──────────────────────────────────────────────────
 
-let _unsubTasks      = null
-let _unsubLogs       = null
-let _taskMap         = {}
-let _logFilter       = null
-let _allLogs         = []
-let _tasks           = []
-let _taskFilter      = 'in progress'
-let _expandedTaskIds = new Set()
-let _projectId       = null
-let _project         = null
+let _unsubTasks  = null
+let _unsubLogs   = null
+let _taskMap     = {}
+let _logFilter   = null
+let _allLogs     = []
+let _tasks       = []
+let _projectId   = null
+let _project     = null
+let _container   = null
+let _drag        = null        // active drag: { taskId, el, ghost, offsetX, offsetY, colStatus, dropColStatus }
+let _pendingDrag = null        // potential drag: { taskId, el, startX, startY }
+let _onTouchMove = null
+let _onTouchEnd  = null
+
+// ─── COLUMN DEFINITIONS ─────────────────────────────────────
+
+const COLS = [
+  { status: 'not started', label: 'Ikke startet' },
+  { status: 'in progress', label: 'I gang'       },
+  { status: 'done',        label: 'Færdig'        },
+]
 
 // ─── LIFECYCLE ──────────────────────────────────────────────
 
 export async function render(container, params = {}) {
   const { projectId } = params
   if (!projectId) { window.navigate('home'); return }
-  _projectId       = projectId
-  _taskFilter      = 'in progress'
-  _expandedTaskIds = new Set()
+
+  _projectId   = projectId
+  _container   = container
+  _logFilter   = null
+  _allLogs     = []
+  _tasks       = []
+  _taskMap     = {}
+  _drag        = null
+  _pendingDrag = null
 
   container.innerHTML = buildShell()
+
+  // Back
   container.querySelector('#btn-back').addEventListener('click', () => window.navigate('home'))
 
-  // Tab switching
-  container.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => switchTab(container, btn.dataset.tab))
+  // Feed sheet
+  container.querySelector('#btn-feed-open').addEventListener('click', () => openFeedSheet())
+  container.querySelector('#btn-feed-close').addEventListener('click', () => closeFeedSheet())
+  container.querySelector('#feed-overlay').addEventListener('click', e => {
+    if (e.target.id === 'feed-overlay') closeFeedSheet()
+  })
+
+  // Task edit sheet
+  container.querySelector('#btn-task-edit-close').addEventListener('click', () => closeTaskEditSheet())
+  container.querySelector('#task-edit-overlay').addEventListener('click', e => {
+    if (e.target.id === 'task-edit-overlay') closeTaskEditSheet()
   })
 
   try {
     _project = await getProject(projectId)
   } catch (err) {
-    showError(container, err.message)
+    showError(err.message)
     return
   }
-  if (!_project) { showError(container, 'Projekt ikke fundet.'); return }
+  if (!_project) { showError('Projekt ikke fundet.'); return }
 
-  renderHeader(container, _project)
+  renderHeader()
 
   _unsubTasks = subscribeToTasks(projectId, tasks => {
-    _tasks  = tasks
+    _tasks   = tasks
     _taskMap = Object.fromEntries(tasks.map(t => [t.id, t.name || 'Unavngivet']))
-    renderTaskTab(container, tasks, projectId)
+    renderKanban()
   })
 
   _unsubLogs = subscribeToLogs(projectId, logs => {
     _allLogs = logs
-    renderFeedTab(container, logs)
+    // Re-render feed if sheet is open
+    if (_container?.querySelector('#feed-overlay')?.classList.contains('open')) {
+      renderFeedInSheet()
+    }
   })
 
-  setupAddTask(container, projectId)
+  setupDragAndDrop()
 }
 
 export function destroy() {
-  if (_unsubTasks) { _unsubTasks(); _unsubTasks = null }
-  if (_unsubLogs)  { _unsubLogs();  _unsubLogs  = null }
-  _taskMap = {}; _logFilter = null; _allLogs = []
-  _tasks = []; _taskFilter = 'in progress'; _expandedTaskIds = new Set()
-  _projectId = null; _project = null
+  if (_unsubTasks)  { _unsubTasks();  _unsubTasks  = null }
+  if (_unsubLogs)   { _unsubLogs();   _unsubLogs   = null }
+  if (_onTouchMove) { document.removeEventListener('touchmove',   _onTouchMove); _onTouchMove = null }
+  if (_onTouchEnd)  {
+    document.removeEventListener('touchend',   _onTouchEnd)
+    document.removeEventListener('touchcancel', _onTouchEnd)
+    _onTouchEnd = null
+  }
+  _drag?.ghost?.remove()
+  _taskMap = {}; _logFilter = null; _allLogs = []; _tasks = []
+  _projectId = null; _project = null; _container = null
+  _drag = null; _pendingDrag = null
 }
 
 // ─── SHELL ──────────────────────────────────────────────────
@@ -76,51 +113,22 @@ function buildShell() {
         <div class="top-bar-title">
           <h1 style="font-size:17px; color:var(--text);">Projekt</h1>
         </div>
+        <div class="top-bar-actions">
+          <button class="btn-icon" id="btn-feed-open" aria-label="Vis log" title="Log">
+            ${iconClock()}
+          </button>
+        </div>
       </div>
 
       <div id="project-header"></div>
 
-      <div class="pv-tab-bar">
-        <button class="tab-btn active" data-tab="tasks">OPGAVER</button>
-        <button class="tab-btn" data-tab="feed">FEED</button>
-      </div>
-
-      <div class="screen-body pv-body">
-        <!-- OPGAVER TAB -->
-        <div id="tab-tasks" class="tab-panel">
-          <div id="tasks-toolbar"></div>
-          <div class="list-content" id="task-list">
-            <div class="empty-state"><div class="spinner"></div></div>
-          </div>
-          <div class="tasks-add-area">
-            <button class="btn-add-task" id="btn-add-task">
-              ${iconPlus()} Tilføj opgave
-            </button>
-            <div id="add-task-form" style="display:none;">
-              <div class="add-task-inner">
-                <input id="new-task-name" class="add-task-input" type="text"
-                       placeholder="Opgavenavn" maxlength="200" autocomplete="off">
-                <div class="add-task-actions">
-                  <button class="btn-cancel-task" id="btn-cancel-task">Annuller</button>
-                  <button class="btn-save-task" id="btn-save-task">Gem</button>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="safe-bottom"></div>
-        </div>
-
-        <!-- FEED TAB -->
-        <div id="tab-feed" class="tab-panel" style="display:none;">
-          <div id="log-feed" style="padding:14px; display:flex; flex-direction:column; gap:10px;">
-            <div class="empty-state"><div class="spinner"></div></div>
-          </div>
-          <div class="safe-bottom"></div>
-        </div>
+      <div class="kanban-outer" id="kanban-outer">
+        <div class="kanban-board" id="kanban-board"></div>
       </div>
 
       <div id="toast-area"></div>
 
+      <!-- Task edit sheet -->
       <div class="sheet-overlay" id="task-edit-overlay">
         <div class="sheet">
           <div class="sheet-handle"></div>
@@ -131,32 +139,34 @@ function buildShell() {
           <div class="sheet-body" id="task-edit-body"></div>
         </div>
       </div>
+
+      <!-- Feed sheet -->
+      <div class="sheet-overlay" id="feed-overlay">
+        <div class="sheet sheet-tall">
+          <div class="sheet-handle"></div>
+          <div class="sheet-header">
+            <span class="sheet-title">Log</span>
+            <button class="btn-icon sheet-close" id="btn-feed-close">${iconClose()}</button>
+          </div>
+          <div class="sheet-body" id="feed-body"></div>
+        </div>
+      </div>
     </div>
   `
 }
 
-// ─── TAB SWITCHING ──────────────────────────────────────────
-
-function switchTab(container, tab) {
-  container.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.tab === tab)
-  })
-  container.querySelector('#tab-tasks').style.display = tab === 'tasks' ? '' : 'none'
-  container.querySelector('#tab-feed').style.display  = tab === 'feed'  ? '' : 'none'
-}
-
 // ─── HEADER ─────────────────────────────────────────────────
 
-function renderHeader(container, project) {
-  const el = container.querySelector('#project-header')
+function renderHeader() {
+  const el = _container?.querySelector('#project-header')
   if (!el) return
-  const dateStr = buildDateStr(project)
-  const isActive = project.status === 'active'
+  const dateStr  = buildDateStr(_project)
+  const isActive = _project.status === 'active'
 
   el.innerHTML = `
     <div class="project-header">
-      <div class="project-header-address">${escapeHtml(project.address || 'Ukendt adresse')}</div>
-      ${project.description ? `<div class="project-header-desc">${escapeHtml(project.description)}</div>` : ''}
+      <div class="project-header-address">${escapeHtml(_project.address || 'Ukendt adresse')}</div>
+      ${_project.description ? `<div class="project-header-desc">${escapeHtml(_project.description)}</div>` : ''}
       ${dateStr ? `<div class="project-header-dates">${dateStr}</div>` : ''}
       ${isActive
         ? `<button class="btn-complete-project" id="btn-complete-project">Marker færdig</button>`
@@ -165,34 +175,35 @@ function renderHeader(container, project) {
   `
 
   if (isActive) {
-    setupCompleteButton(el, container)
+    el.querySelector('#btn-complete-project').addEventListener('click', async () => {
+      const confirmed = await showConfirmDialog('Marker projektet som færdigt?', 'Marker færdig')
+      if (!confirmed) return
+      const btn = el.querySelector('#btn-complete-project')
+      btn.disabled = true; btn.textContent = 'Markerer…'
+      try {
+        await updateProject(_projectId, { status: 'completed' })
+        showToast('Projekt markeret færdigt')
+        setTimeout(() => window.navigate('home'), 1200)
+      } catch {
+        showToast('Fejl — prøv igen', true)
+        btn.disabled = false; btn.textContent = 'Marker færdig'
+      }
+    })
   }
 }
 
-function setupCompleteButton(headerEl, container) {
-  const btn = headerEl.querySelector('#btn-complete-project')
-  if (!btn) return
-
-  btn.addEventListener('click', async () => {
-    const confirmed = await showConfirmDialog(container, 'Marker projektet som færdigt?', 'Marker færdig')
-    if (!confirmed) return
-
-    btn.disabled = true
-    btn.textContent = 'Markerer…'
-
-    try {
-      await updateProject(_projectId, { status: 'completed' })
-      showToast(container, 'Projekt markeret færdigt')
-      setTimeout(() => window.navigate('home'), 1200)
-    } catch {
-      showToast(container, 'Fejl — prøv igen', true)
-      btn.disabled = false
-      btn.textContent = 'Marker færdig'
-    }
-  })
+function buildDateStr(project) {
+  const start = project.startDate ? formatDateShort(project.startDate) : null
+  const end   = project.endDate   ? formatDateShort(project.endDate)   : null
+  if (start && end) return `${start} → ${end}`
+  if (start)        return `Fra ${start}`
+  if (end)          return `Til ${end}`
+  return null
 }
 
-function showConfirmDialog(container, question, okLabel) {
+// ─── CONFIRM DIALOG ─────────────────────────────────────────
+
+function showConfirmDialog(question, okLabel) {
   return new Promise(resolve => {
     const overlay = document.createElement('div')
     overlay.className = 'confirm-overlay'
@@ -205,151 +216,297 @@ function showConfirmDialog(container, question, okLabel) {
         </div>
       </div>
     `
-
     const dismiss = result => { overlay.remove(); resolve(result) }
     overlay.querySelector('.confirm-cancel').addEventListener('click', () => dismiss(false))
     overlay.querySelector('.confirm-ok').addEventListener('click', () => dismiss(true))
     overlay.addEventListener('click', e => { if (e.target === overlay) dismiss(false) })
-
-    container.querySelector('#project-view-screen').appendChild(overlay)
+    _container.querySelector('#project-view-screen').appendChild(overlay)
   })
 }
 
-function buildDateStr(project) {
-  const start = project.startDate ? formatDateShort(project.startDate) : null
-  const end   = project.endDate   ? formatDateShort(project.endDate)   : null
-  if (start && end) return `${start} → ${end}`
-  if (start)        return `Fra ${start}`
-  if (end)          return `Til ${end}`
-  return null
-}
+// ─── KANBAN ──────────────────────────────────────────────────
 
-// ─── OPGAVER TAB ────────────────────────────────────────────
+function renderKanban() {
+  const board = _container?.querySelector('#kanban-board')
+  if (!board) return
 
-function renderTaskTab(container, tasks, projectId) {
-  renderToolbar(container, tasks)
-  renderTaskList(container, tasks, projectId)
-}
+  const active = getActive()
 
-function renderToolbar(container, tasks) {
-  const toolbar = container.querySelector('#tasks-toolbar')
-  if (!toolbar) return
+  board.innerHTML = COLS.map(col => {
+    const colTasks = _tasks.filter(t => t.status === col.status)
+    return buildColHtml(col, colTasks, active)
+  }).join('')
 
-  const filters = [
-    { value: 'in progress', label: 'I gang' },
-    { value: 'not started', label: 'Ikke startet' },
-    { value: 'done',        label: 'Færdig' }
-  ]
-
-  toolbar.innerHTML = `
-    <div class="task-filter-pills">
-      ${filters.map(f => `
-        <button class="task-filter-pill${_taskFilter === f.value ? ' active' : ''}"
-                data-filter="${escapeAttr(f.value)}">
-          ${escapeHtml(f.label)}
-        </button>
-      `).join('')}
-    </div>
-  `
-
-  toolbar.querySelectorAll('.task-filter-pill').forEach(pill => {
-    pill.addEventListener('click', () => {
-      _taskFilter = pill.dataset.filter
-      renderTaskTab(container, _tasks, _projectId)
-    })
-  })
-}
-
-function renderTaskList(container, tasks, projectId) {
-  const list = container.querySelector('#task-list')
-  if (!list) return
-
-  const active  = getActive()
-  const display = tasks.filter(t => t.status === _taskFilter)
-
-  if (display.length === 0) {
-    const allEmpty = tasks.length === 0
-    const filterLabels = { 'in progress': 'I gang', 'not started': 'Ikke startet', 'done': 'Færdige' }
-    list.innerHTML = `
-      <div class="empty-state" style="padding:32px;">
-        ${allEmpty ? `
-          <svg class="empty-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-          </svg>
-          <div class="empty-title">Ingen opgaver</div>
-          <div class="empty-body">Tilføj en opgave for at komme i gang.</div>
-        ` : `
-          <div class="empty-title">Ingen ${filterLabels[_taskFilter] || ''} opgaver</div>
-        `}
-      </div>
-    `
-    return
-  }
-
-  list.innerHTML = display.map(t => buildTaskRow(t, active)).join('')
-
-  // Expand / collapse — listener on the whole main row so the tap target is generous.
-  // Pill and edit button use stopPropagation to prevent this from firing.
-  list.querySelectorAll('.task-row-main').forEach(main => {
-    main.addEventListener('click', () => {
-      const tid = main.closest('.task-row').dataset.taskId
-      if (_expandedTaskIds.has(tid)) _expandedTaskIds.delete(tid)
-      else _expandedTaskIds.add(tid)
-      renderTaskList(container, _tasks, _projectId)
+  // Add task buttons
+  board.querySelectorAll('.kanban-add-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const col = btn.closest('.kanban-col')
+      btn.style.display = 'none'
+      col.querySelector('.kanban-add-form').style.display = 'flex'
+      col.querySelector('.kanban-add-input').focus()
     })
   })
 
-  // Edit button opens sheet
-  list.querySelectorAll('.task-row-edit-btn').forEach(btn => {
+  board.querySelectorAll('.kanban-add-cancel').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const col = btn.closest('.kanban-col')
+      col.querySelector('.kanban-add-form').style.display = 'none'
+      col.querySelector('.kanban-add-btn').style.display = ''
+    })
+  })
+
+  board.querySelectorAll('.kanban-add-save').forEach(btn => {
+    btn.addEventListener('click', () => doAddTask(btn))
+  })
+
+  board.querySelectorAll('.kanban-add-input').forEach(input => {
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') doAddTask(input.closest('.kanban-add-form').querySelector('.kanban-add-save'))
+      if (e.key === 'Escape') input.closest('.kanban-col').querySelector('.kanban-add-cancel').click()
+    })
+  })
+
+  // Edit buttons
+  board.querySelectorAll('.kanban-card-edit').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation()
       const task = _tasks.find(t => t.id === btn.dataset.taskId)
-      if (task) openTaskEditSheet(container, task)
+      if (task) openTaskEditSheet(task)
     })
+  })
+
+  // Touch drag-and-drop
+  board.querySelectorAll('.kanban-card').forEach(card => {
+    card.addEventListener('touchstart', onCardTouchStart, { passive: true })
   })
 }
 
-function buildTaskRow(task, active) {
-  const isActive   = active && active.taskId === task.id
-  const isDone     = task.status === 'done'
-  const sc         = statusPillClass(task.status)
-  const isExpanded = _expandedTaskIds.has(task.id)
-  const desc       = task.description || ''
+async function doAddTask(saveBtn) {
+  const col    = saveBtn.closest('.kanban-col')
+  const input  = col.querySelector('.kanban-add-input')
+  const name   = input.value.trim()
+  if (!name) { input.focus(); return }
+  const status = col.dataset.status
 
+  saveBtn.disabled = true
+  try {
+    const taskId = await createTask(_projectId, name)
+    if (status !== 'not started') {
+      await updateTask(taskId, { status })
+    }
+    input.value = ''
+    col.querySelector('.kanban-add-form').style.display = 'none'
+    col.querySelector('.kanban-add-btn').style.display = ''
+  } catch {
+    showToast('Fejl ved oprettelse', true)
+  } finally {
+    saveBtn.disabled = false
+  }
+}
+
+function buildColHtml(col, colTasks, active) {
   return `
-    <div class="task-row${isActive ? ' task-row-active' : ''}${isExpanded ? ' is-expanded' : ''}"
-         data-task-id="${escapeAttr(task.id)}">
-      <div class="task-row-main">
-        <div class="task-row-body">
-          <div class="task-row-name${isDone ? ' done' : ''}">${escapeHtml(task.name || 'Unavngivet opgave')}</div>
-        </div>
-        <span class="task-status-pill ${sc}">
-          ${taskStatusLabel(task.status)}
-        </span>
-        <button class="task-row-edit-btn" data-task-id="${escapeAttr(task.id)}" aria-label="Rediger">
-          ${iconEdit()}
-        </button>
+    <div class="kanban-col" data-status="${escapeAttr(col.status)}">
+      <div class="kanban-col-header">
+        <span class="kanban-col-title">${escapeHtml(col.label)}</span>
+        <span class="kanban-col-count">${colTasks.length}</span>
       </div>
-      <div class="task-row-expand-area${isExpanded ? ' open' : ''}">
-        <div class="task-row-desc-text${!desc ? ' dim' : ''}">${escapeHtml(desc || 'Ingen beskrivelse endnu')}</div>
+      <div class="kanban-col-body">
+        ${colTasks.map(t => buildKanbanCard(t, active)).join('')}
+      </div>
+      <div class="kanban-col-footer">
+        <button class="kanban-add-btn">${iconPlus()} Tilføj</button>
+        <div class="kanban-add-form" style="display:none;">
+          <input class="kanban-add-input" type="text" placeholder="Opgavenavn" maxlength="200" autocomplete="off">
+          <div class="kanban-add-actions">
+            <button class="kanban-add-cancel">Annuller</button>
+            <button class="kanban-add-save">Gem</button>
+          </div>
+        </div>
       </div>
     </div>
   `
 }
 
-function statusPillClass(status) {
-  return { 'not started': 'not-started', 'in progress': 'in-progress', 'done': 'done' }[status] ?? 'not-started'
+function buildKanbanCard(task, active) {
+  const isActive   = active && active.taskId === task.id
+  const desc       = task.description || ''
+  const descPreview = desc.length > 70 ? desc.slice(0, 70) + '…' : desc
+
+  return `
+    <div class="kanban-card${isActive ? ' active-task' : ''}"
+         data-task-id="${escapeAttr(task.id)}">
+      <div class="kanban-card-content">
+        <div class="kanban-card-name">${escapeHtml(task.name || 'Unavngivet')}</div>
+        ${descPreview ? `<div class="kanban-card-desc">${escapeHtml(descPreview)}</div>` : ''}
+      </div>
+      <button class="kanban-card-edit" data-task-id="${escapeAttr(task.id)}" aria-label="Rediger">
+        ${iconEdit()}
+      </button>
+    </div>
+  `
 }
 
-function cycleStatus(status) {
-  return { 'not started': 'in progress', 'in progress': 'done', 'done': 'not started' }[status] ?? 'not started'
+// ─── DRAG AND DROP ──────────────────────────────────────────
+
+function setupDragAndDrop() {
+  _onTouchMove = onDocTouchMove
+  _onTouchEnd  = onDocTouchEnd
+  document.addEventListener('touchmove',   _onTouchMove, { passive: false })
+  document.addEventListener('touchend',    _onTouchEnd,  { passive: true  })
+  document.addEventListener('touchcancel', _onTouchEnd,  { passive: true  })
+}
+
+function onCardTouchStart(e) {
+  if (e.touches.length !== 1) return
+  const touch = e.touches[0]
+  const card  = e.currentTarget
+  _pendingDrag = {
+    taskId: card.dataset.taskId,
+    el:     card,
+    startX: touch.clientX,
+    startY: touch.clientY,
+  }
+}
+
+function onDocTouchMove(e) {
+  if (!_pendingDrag && !_drag) return
+
+  const touch = e.touches[0]
+
+  if (_pendingDrag && !_drag) {
+    const dx = touch.clientX - _pendingDrag.startX
+    const dy = touch.clientY - _pendingDrag.startY
+
+    // Vertical scroll takes priority — cancel potential drag
+    if (Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) {
+      _pendingDrag = null
+      return
+    }
+
+    // Horizontal movement enough to initiate drag
+    if (Math.abs(dx) > 14 && Math.abs(dx) > Math.abs(dy)) {
+      startDrag(_pendingDrag.taskId, _pendingDrag.el, touch)
+      _pendingDrag = null
+    }
+    return
+  }
+
+  if (_drag) {
+    e.preventDefault()
+    moveDragGhost(touch)
+    highlightDropTarget(touch)
+  }
+}
+
+function onDocTouchEnd(e) {
+  _pendingDrag = null
+  if (!_drag) return
+  finalizeDrop(e.changedTouches[0])
+}
+
+function startDrag(taskId, cardEl, touch) {
+  const rect  = cardEl.getBoundingClientRect()
+  const ghost = cardEl.cloneNode(true)
+
+  Object.assign(ghost.style, {
+    position:     'fixed',
+    left:         `${rect.left}px`,
+    top:          `${rect.top}px`,
+    width:        `${rect.width}px`,
+    pointerEvents:'none',
+    opacity:      '0.88',
+    zIndex:       '999',
+    transform:    'scale(1.04)',
+    boxShadow:    '0 8px 28px rgba(0,0,0,0.7)',
+    transition:   'none',
+  })
+  ghost.classList.add('kanban-card-dragging')
+  document.body.appendChild(ghost)
+  cardEl.classList.add('kanban-card-placeholder')
+
+  _drag = {
+    taskId,
+    el:           cardEl,
+    ghost,
+    offsetX:      touch.clientX - rect.left,
+    offsetY:      touch.clientY - rect.top,
+    colStatus:    cardEl.closest('.kanban-col')?.dataset?.status || null,
+    dropColStatus: null,
+  }
+}
+
+function moveDragGhost(touch) {
+  if (!_drag?.ghost) return
+  _drag.ghost.style.left = `${touch.clientX - _drag.offsetX}px`
+  _drag.ghost.style.top  = `${touch.clientY - _drag.offsetY}px`
+}
+
+function highlightDropTarget(touch) {
+  if (!_drag) return
+  // Hide ghost temporarily to hit-test beneath it
+  _drag.ghost.style.visibility = 'hidden'
+  const el = document.elementFromPoint(touch.clientX, touch.clientY)
+  _drag.ghost.style.visibility = ''
+
+  const col = el?.closest('.kanban-col')
+
+  _container?.querySelectorAll('.kanban-col.drop-target').forEach(c => c.classList.remove('drop-target'))
+
+  if (col) {
+    col.classList.add('drop-target')
+    _drag.dropColStatus = col.dataset.status
+  } else {
+    _drag.dropColStatus = null
+  }
+}
+
+async function finalizeDrop(touch) {
+  const drag = _drag
+  _drag = null
+
+  drag.ghost.remove()
+  drag.el.classList.remove('kanban-card-placeholder')
+  _container?.querySelectorAll('.kanban-col.drop-target').forEach(c => c.classList.remove('drop-target'))
+
+  const newStatus = drag.dropColStatus
+  if (!newStatus || newStatus === drag.colStatus) return
+
+  const task = _tasks.find(t => t.id === drag.taskId)
+  if (!task) return
+
+  try {
+    await updateTask(drag.taskId, { status: newStatus })
+
+    // Prompt to pick next task if active task was moved to done
+    const active = getActive()
+    if (active?.taskId === drag.taskId && newStatus === 'done') {
+      showNextTaskNotice()
+    }
+  } catch {
+    showToast('Fejl ved flytning', true)
+  }
+}
+
+// ─── NEXT TASK NOTICE ────────────────────────────────────────
+
+function showNextTaskNotice() {
+  _container?.querySelector('.next-task-notice')?.remove()
+  const notice = document.createElement('div')
+  notice.className = 'next-task-notice'
+  notice.innerHTML = `
+    <span>Vælg næste opgave?</span>
+    <button class="next-task-dismiss" aria-label="Luk">×</button>
+  `
+  notice.querySelector('.next-task-dismiss').addEventListener('click', () => notice.remove())
+  _container?.querySelector('#kanban-outer')?.insertAdjacentElement('beforebegin', notice)
 }
 
 // ─── TASK EDIT SHEET ────────────────────────────────────────
 
-function openTaskEditSheet(container, task) {
-  const overlay = container.querySelector('#task-edit-overlay')
-  const body    = container.querySelector('#task-edit-body')
+function openTaskEditSheet(task) {
+  const overlay = _container?.querySelector('#task-edit-overlay')
+  const body    = _container?.querySelector('#task-edit-body')
   if (!overlay) return
 
   body.innerHTML = `
@@ -368,10 +525,8 @@ function openTaskEditSheet(container, task) {
   `
 
   overlay.classList.add('open')
-  overlay.onclick = e => { if (e.target === overlay) closeTaskEditSheet(container) }
-  container.querySelector('#btn-task-edit-close').onclick = () => closeTaskEditSheet(container)
 
-  body.querySelector('#task-edit-cancel').addEventListener('click', () => closeTaskEditSheet(container))
+  body.querySelector('#task-edit-cancel').addEventListener('click', () => closeTaskEditSheet())
 
   const doSave = async () => {
     const name = body.querySelector('#task-edit-name').value.trim()
@@ -381,9 +536,9 @@ function openTaskEditSheet(container, task) {
     saveBtn.disabled = true; saveBtn.textContent = '...'
     try {
       await updateTask(task.id, { name, description: desc || null })
-      closeTaskEditSheet(container)
+      closeTaskEditSheet()
     } catch {
-      showToast(container, 'Fejl ved gem', true)
+      showToast('Fejl ved gem', true)
       saveBtn.disabled = false; saveBtn.textContent = 'Gem'
     }
   }
@@ -391,68 +546,33 @@ function openTaskEditSheet(container, task) {
   body.querySelector('#task-edit-save').addEventListener('click', doSave)
   body.querySelector('#task-edit-name').addEventListener('keydown', e => {
     if (e.key === 'Enter') doSave()
-    if (e.key === 'Escape') closeTaskEditSheet(container)
+    if (e.key === 'Escape') closeTaskEditSheet()
   })
 
   setTimeout(() => body.querySelector('#task-edit-name')?.focus(), 80)
 }
 
-function closeTaskEditSheet(container) {
-  container.querySelector('#task-edit-overlay')?.classList.remove('open')
+function closeTaskEditSheet() {
+  _container?.querySelector('#task-edit-overlay')?.classList.remove('open')
 }
 
-// ─── ADD TASK ────────────────────────────────────────────────
+// ─── FEED SHEET ──────────────────────────────────────────────
 
-function setupAddTask(container, projectId) {
-  const btn     = container.querySelector('#btn-add-task')
-  const form    = container.querySelector('#add-task-form')
-  const cancel  = container.querySelector('#btn-cancel-task')
-  const save    = container.querySelector('#btn-save-task')
-  const input   = container.querySelector('#new-task-name')
-
-  btn.addEventListener('click', () => {
-    form.style.display = 'block'
-    btn.style.display  = 'none'
-    input.value = ''
-    input.focus()
-  })
-
-  cancel.addEventListener('click', () => {
-    form.style.display = 'none'
-    btn.style.display  = 'block'
-  })
-
-  const doSave = async () => {
-    const name = input.value.trim()
-    if (!name) { input.focus(); return }
-    save.disabled = true; save.textContent = '...'
-    try {
-      await createTask(projectId, name)
-      form.style.display = 'none'
-      btn.style.display  = 'block'
-      showToast(container, 'Opgave tilføjet')
-    } catch {
-      showToast(container, 'Fejl ved oprettelse', true)
-    } finally {
-      save.disabled = false; save.textContent = 'Gem'
-    }
-  }
-
-  save.addEventListener('click', doSave)
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') doSave()
-    if (e.key === 'Escape') cancel.click()
-  })
+function openFeedSheet() {
+  _container?.querySelector('#feed-overlay')?.classList.add('open')
+  renderFeedInSheet()
 }
 
-// ─── FEED TAB ────────────────────────────────────────────────
+function closeFeedSheet() {
+  _container?.querySelector('#feed-overlay')?.classList.remove('open')
+}
 
-function renderFeedTab(container, logs) {
-  const feed = container.querySelector('#log-feed')
-  if (!feed) return
+function renderFeedInSheet() {
+  const body = _container?.querySelector('#feed-body')
+  if (!body) return
 
-  if (logs.length === 0) {
-    feed.innerHTML = `
+  if (_allLogs.length === 0) {
+    body.innerHTML = `
       <div class="empty-state" style="padding:32px;">
         <div class="empty-title">Ingen logs endnu</div>
         <div class="empty-body">Log et foto eller en note fra en opgave.</div>
@@ -461,12 +581,12 @@ function renderFeedTab(container, logs) {
     return
   }
 
-  const taskIdsInLogs = [...new Set(logs.map(l => l.taskId).filter(Boolean))]
+  const taskIdsInLogs = [...new Set(_allLogs.map(l => l.taskId).filter(Boolean))]
   const showFilter    = taskIdsInLogs.length > 0
 
-  feed.innerHTML = `
+  body.innerHTML = `
     ${showFilter ? `
-      <div class="log-filter-row" id="log-filter-row">
+      <div class="log-filter-row" id="feed-filter-row">
         <button class="log-filter-pill${_logFilter === null ? ' active' : ''}" data-filter="">Alle</button>
         ${taskIdsInLogs.map(tid => {
           const name = _taskMap[tid] || 'Ukendt opgave'
@@ -474,26 +594,26 @@ function renderFeedTab(container, logs) {
         }).join('')}
       </div>
     ` : ''}
-    <div id="log-cards" style="display:flex;flex-direction:column;gap:10px;"></div>
+    <div id="feed-log-cards" style="display:flex;flex-direction:column;gap:10px;padding-bottom:24px;"></div>
   `
 
   if (showFilter) {
-    feed.querySelectorAll('.log-filter-pill').forEach(pill => {
+    body.querySelectorAll('.log-filter-pill').forEach(pill => {
       pill.addEventListener('click', () => {
         _logFilter = pill.dataset.filter || null
-        feed.querySelectorAll('.log-filter-pill').forEach(p => {
-          p.classList.toggle('active', p.dataset.filter === (pill.dataset.filter))
+        body.querySelectorAll('.log-filter-pill').forEach(p => {
+          p.classList.toggle('active', p.dataset.filter === pill.dataset.filter)
         })
-        renderFilteredLogs(feed)
+        renderFilteredFeedLogs(body)
       })
     })
   }
 
-  renderFilteredLogs(feed)
+  renderFilteredFeedLogs(body)
 }
 
-function renderFilteredLogs(feed) {
-  const cards    = feed.querySelector('#log-cards')
+function renderFilteredFeedLogs(body) {
+  const cards = body.querySelector('#feed-log-cards')
   if (!cards) return
   const filtered = _logFilter ? _allLogs.filter(l => l.taskId === _logFilter) : _allLogs
 
@@ -526,8 +646,8 @@ function buildLogCard(log) {
 
 // ─── HELPERS ────────────────────────────────────────────────
 
-function showToast(container, message, isError = false) {
-  const area = container.querySelector('#toast-area')
+function showToast(message, isError = false) {
+  const area = _container?.querySelector('#toast-area')
   if (!area) return
   const toast = document.createElement('div')
   toast.className = `toast${isError ? ' error' : ''}`
@@ -538,9 +658,9 @@ function showToast(container, message, isError = false) {
   setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300) }, 2500)
 }
 
-function showError(container, message) {
-  const body = container.querySelector('.screen-body') || container
-  body.innerHTML = `
+function showError(message) {
+  const body = _container?.querySelector('.kanban-outer') || _container
+  if (body) body.innerHTML = `
     <div class="empty-state">
       <div class="empty-title" style="color:var(--danger);">Fejl</div>
       <div class="empty-body">${escapeHtml(message)}</div>
@@ -562,14 +682,6 @@ function iconBack() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>`
 }
 
-function iconPlus() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;vertical-align:-2px;"><path d="M12 5v14M5 12h14"/></svg>`
-}
-
-function iconChevron() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M9 18l6-6-6-6"/></svg>`
-}
-
 function iconClose() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6L6 18M6 6l12 12"/></svg>`
 }
@@ -579,4 +691,12 @@ function iconEdit() {
     <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
     <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
   </svg>`
+}
+
+function iconPlus() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="13" height="13"><path d="M12 5v14M5 12h14"/></svg>`
+}
+
+function iconClock() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`
 }
