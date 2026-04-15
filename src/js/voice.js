@@ -15,11 +15,12 @@ export function startVoiceInput({ onResult, onError, onStart, onEnd, lang = 'da-
   }
 
   const recognition = new SR()
-  recognition.lang             = lang
-  recognition.interimResults   = false
-  recognition.maxAlternatives  = 1
-  recognition.continuous       = true
+  recognition.lang            = lang
+  recognition.interimResults  = false
+  recognition.maxAlternatives = 1
+  recognition.continuous      = true
 
+  let isRecording  = true   // set false by stop() to distinguish user stop from browser stop
   let _accumulated = ''
 
   recognition.onstart = () => onStart?.()
@@ -31,16 +32,22 @@ export function startVoiceInput({ onResult, onError, onStart, onEnd, lang = 'da-
   }
 
   recognition.onend = () => {
-    // Deliver full accumulated transcript before notifying end
-    if (_accumulated) onResult?.(_accumulated)
-    onEnd?.()
+    if (isRecording) {
+      // Browser stopped on its own (pause, timeout) — restart to keep recording
+      try { recognition.start() } catch { /* ignore race */ }
+    } else {
+      // User called stop() — deliver full transcript and signal done
+      if (_accumulated) onResult?.(_accumulated)
+      onEnd?.()
+    }
   }
 
   recognition.onerror = e => {
-    // 'aborted' fires when we call stop() ourselves — not a user-visible error
-    if (e.error !== 'aborted') {
-      onError?.(e.error)
-    }
+    if (e.error === 'aborted')   return  // from our own stop() — handled in onend
+    if (e.error === 'no-speech') return  // silent pause — onend will restart
+    // Real error (not-allowed, audio-capture, etc.) — stop the restart loop
+    isRecording = false
+    onError?.(e.error)
   }
 
   try {
@@ -52,6 +59,7 @@ export function startVoiceInput({ onResult, onError, onStart, onEnd, lang = 'da-
 
   return {
     stop() {
+      isRecording = false
       try { recognition.stop() } catch { /* already stopped */ }
     }
   }
