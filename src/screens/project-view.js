@@ -1,6 +1,7 @@
 import { getProject, subscribeToTasks, subscribeToLogs, updateTask, createTask } from '../js/api.js'
 import { formatDateShort, formatTimestamp, relativeDate } from '../js/utils.js'
 import { getActive } from '../js/activeTask.js'
+import { startVoiceInput } from '../js/voice.js'
 
 // ─── STATE ──────────────────────────────────────────────────
 
@@ -13,6 +14,7 @@ let _tasks       = []
 let _projectId   = null
 let _project     = null
 let _container   = null
+let _stopVoice   = null
 
 // ─── COLUMN DEFINITIONS ─────────────────────────────────────
 
@@ -87,6 +89,7 @@ export async function render(container, params = {}) {
 export function destroy() {
   if (_unsubTasks) { _unsubTasks(); _unsubTasks = null }
   if (_unsubLogs)  { _unsubLogs();  _unsubLogs  = null }
+  _stopVoice?.(); _stopVoice = null
   _taskMap = {}; _logFilter = null; _allLogs = []; _tasks = []
   _projectId = null; _project = null; _container = null
 }
@@ -366,16 +369,25 @@ function showNextTaskNotice() {
 // ─── TASK EDIT SHEET ────────────────────────────────────────
 
 function openTaskEditSheet(task) {
-  const overlay = _container?.querySelector('#task-edit-overlay')
-  const body    = _container?.querySelector('#task-edit-body')
+  const overlay  = _container?.querySelector('#task-edit-overlay')
+  const body     = _container?.querySelector('#task-edit-body')
   if (!overlay) return
+
+  const hasMic = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
 
   body.innerHTML = `
     <div class="task-edit-form">
       <div class="task-edit-label">OPGAVENAVN</div>
       <input id="task-edit-name" class="task-edit-input" type="text"
              value="${escapeAttr(task.name || '')}" maxlength="200" autocomplete="off">
-      <div class="task-edit-label" style="margin-top:14px;">BESKRIVELSE</div>
+      <div class="task-edit-label-row" style="margin-top:14px;">
+        <div class="task-edit-label">BESKRIVELSE</div>
+        ${hasMic ? `
+        <button class="btn-icon task-desc-mic" id="task-desc-mic" aria-label="Dikter beskrivelse">
+          ${iconMic()}
+        </button>
+        ` : ''}
+      </div>
       <textarea id="task-edit-desc" class="task-edit-textarea"
                 placeholder="Instruktioner, mål, materialer…" rows="5">${escapeHtml(task.description || '')}</textarea>
       <div class="task-edit-actions">
@@ -386,6 +398,42 @@ function openTaskEditSheet(task) {
   `
 
   overlay.classList.add('open')
+
+  // Mic toggle for beskrivelse dictation
+  if (hasMic) {
+    const micBtn   = body.querySelector('#task-desc-mic')
+    let isRecording = false
+
+    micBtn.addEventListener('click', () => {
+      if (isRecording) {
+        _stopVoice?.()
+        // onEnd will clear state
+      } else {
+        const voice = startVoiceInput({
+          lang:    'da-DK',
+          onStart: () => { isRecording = true; micBtn.classList.add('mic-recording') },
+          onEnd:   () => { isRecording = false; _stopVoice = null; micBtn.classList.remove('mic-recording') },
+          onResult: transcript => {
+            const textarea = body.querySelector('#task-edit-desc')
+            if (!textarea) return
+            const cur = textarea.value
+            textarea.value = cur ? cur + ' ' + transcript : transcript
+          },
+          onError: code => {
+            isRecording = false
+            _stopVoice = null
+            micBtn.classList.remove('mic-recording')
+            if (code === 'not-supported') {
+              showToast('Stemmeindtastning ikke understøttet i denne browser', true)
+            } else {
+              showToast('Kunne ikke optage — prøv igen', true)
+            }
+          },
+        })
+        _stopVoice = voice.stop
+      }
+    })
+  }
 
   body.querySelector('#task-edit-cancel').addEventListener('click', () => closeTaskEditSheet())
 
@@ -414,6 +462,7 @@ function openTaskEditSheet(task) {
 }
 
 function closeTaskEditSheet() {
+  _stopVoice?.(); _stopVoice = null
   _container?.querySelector('#task-edit-overlay')?.classList.remove('open')
 }
 
@@ -564,4 +613,11 @@ function iconClock() {
 
 function iconCheck() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M20 6L9 17l-5-5"/></svg>`
+}
+
+function iconMic() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15">
+    <rect x="9" y="2" width="6" height="11" rx="3"/>
+    <path d="M5 10a7 7 0 0014 0M12 19v3M8 22h8"/>
+  </svg>`
 }

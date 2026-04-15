@@ -3049,3 +3049,54 @@ html, body {
 .action-sheet-item--danger {
   color: var(--danger);
 }
+
+/* ─── VOICE INPUT ─── */
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0   rgba(208, 68, 68, 0.5); }
+  70%  { box-shadow: 0 0 0 8px rgba(208, 68, 68, 0);   }
+  100% { box-shadow: 0 0 0 0   rgba(208, 68, 68, 0);   }
+}
+
+.mic-recording {
+  animation: pulse-ring 1.2s ease-out infinite !important;
+  background: var(--danger-dim) !important;
+  color: var(--danger) !important;
+}
+
+/* Mic button in the home action row */
+.btn-hero-mic {
+  flex: 0 0 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 0.5px solid var(--border2);
+  border-radius: var(--radius-sm);
+  color: var(--text2);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+}
+
+.btn-hero-mic:active {
+  background: var(--surface2);
+  color: var(--text);
+}
+
+/* Beskrivelse label row in task edit sheet */
+.task-edit-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.task-desc-mic {
+  color: var(--text3);
+  transition: color 0.15s;
+}
+
+.task-desc-mic:active {
+  color: var(--text2);
+}

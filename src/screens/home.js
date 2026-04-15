@@ -1,13 +1,15 @@
-import { subscribeToProjects, getTasks, getTask, createTask, updateTask, subscribeToTaskLogs } from '../js/api.js'
+import { subscribeToProjects, getTasks, getTask, createTask, updateTask, subscribeToTaskLogs, addLog } from '../js/api.js'
 import { formatDayFull, formatTimestamp, relativeDate } from '../js/utils.js'
 import { getApiKey } from '../js/claude.js'
 import { getActive, setActive, clearActive } from '../js/activeTask.js'
+import { startVoiceInput } from '../js/voice.js'
 
 let _unsubProjects       = null
 let _unsubTaskLogs       = null
 let _activeTaskIdForFeed = null
 let _activeTaskDesc      = null
 let _projects            = []
+let _stopVoice           = null
 
 // ─── LIFECYCLE ──────────────────────────────────────────────
 
@@ -49,6 +51,55 @@ export function render(container) {
     })
   })
 
+  const micBtn = container.querySelector('#btn-hero-mic')
+  if (micBtn) {
+    const doStop = () => {
+      _stopVoice?.()
+      _stopVoice = null
+      micBtn.classList.remove('mic-recording')
+    }
+
+    micBtn.addEventListener('pointerdown', e => {
+      e.preventDefault()
+      micBtn.setPointerCapture(e.pointerId)
+
+      const active = getActive()
+      const voice  = startVoiceInput({
+        lang:     'da-DK',
+        onStart:  () => micBtn.classList.add('mic-recording'),
+        onEnd:    () => { micBtn.classList.remove('mic-recording'); _stopVoice = null },
+        onResult: async transcript => {
+          try {
+            await addLog({
+              projectId: active?.projectId || null,
+              taskId:    active?.taskId    || null,
+              type:      'note',
+              note:      transcript,
+              photoUrl:  null,
+              location:  null,
+            })
+          } catch {
+            showToast(container, 'Kunne ikke gemme note', true)
+          }
+        },
+        onError: code => {
+          micBtn.classList.remove('mic-recording')
+          _stopVoice = null
+          if (code === 'not-supported') {
+            showToast(container, 'Stemmeindtastning ikke understøttet i denne browser', true)
+          } else {
+            showToast(container, 'Kunne ikke optage — prøv igen', true)
+          }
+        },
+      })
+      _stopVoice = voice.stop
+    })
+
+    micBtn.addEventListener('pointerup',          doStop)
+    micBtn.addEventListener('pointercancel',      doStop)
+    micBtn.addEventListener('lostpointercapture', doStop)
+  }
+
   _unsubProjects = subscribeToProjects(projects => {
     _projects = projects
 
@@ -65,6 +116,7 @@ export function render(container) {
 export function destroy() {
   if (_unsubProjects) { _unsubProjects(); _unsubProjects = null }
   if (_unsubTaskLogs) { _unsubTaskLogs(); _unsubTaskLogs = null }
+  _stopVoice?.(); _stopVoice = null
   _activeTaskIdForFeed = null
   _activeTaskDesc = null
   _projects = []
@@ -73,6 +125,7 @@ export function destroy() {
 // ─── SHELL ──────────────────────────────────────────────────
 
 function buildShell() {
+  const hasMic = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
   return `
     <div class="screen" id="home-screen">
       <div class="top-bar">
@@ -119,12 +172,19 @@ function buildShell() {
             ${iconNote()}
             Bare en note
           </button>
+          ${hasMic ? `
+          <button class="btn-ghost btn-hero-mic" id="btn-hero-mic" aria-label="Optag stemmenote">
+            ${iconMic()}
+          </button>
+          ` : ''}
         </div>
 
         <div id="home-task-feed"></div>
 
         <div class="safe-bottom"></div>
       </div>
+
+      <div id="home-toast-area"></div>
 
       <div class="sheet-overlay" id="sheet-overlay">
         <div class="sheet">
@@ -561,6 +621,18 @@ function closeSheet(container) {
 
 // ─── HELPERS ────────────────────────────────────────────────
 
+function showToast(container, message, isError = false) {
+  const area = container.querySelector('#home-toast-area')
+  if (!area) return
+  const toast = document.createElement('div')
+  toast.className = `toast${isError ? ' error' : ''}`
+  toast.textContent = message
+  area.innerHTML = ''
+  area.appendChild(toast)
+  requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add('show')))
+  setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300) }, 2500)
+}
+
 function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 }
@@ -619,4 +691,11 @@ function iconArrowRight() {
 
 function iconPlus() {
   return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>`
+}
+
+function iconMic() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+    <rect x="9" y="2" width="6" height="11" rx="3"/>
+    <path d="M5 10a7 7 0 0014 0M12 19v3M8 22h8"/>
+  </svg>`
 }
