@@ -155,7 +155,9 @@ You will be given:
 - projectAddress: the project location
 - tasks: the current task list (id, name, status)
 
-Respond ONLY with a JSON array of actions. No preamble, no markdown. Each action is one of:
+Return ONLY a raw JSON array. No markdown, no code fences, no comments, no explanations before or after the JSON. Your entire response must be parseable by JSON.parse().
+
+Each action in the array is one of:
 
 { "type": "new_task", "name": string, "description": string | null, "estimatedHours": number | null }
 { "type": "task_note", "taskId": string, "taskName": string, "note": string }
@@ -202,14 +204,18 @@ Rules:
   const data = await response.json()
   const text = data.content?.[0]?.text?.trim() || '[]'
   console.log('[diktat] raw response text:', text)
-  const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
+
+  // Extract the JSON array robustly: find first [ and last ] and take only that slice
+  const start = text.indexOf('[')
+  const end   = text.lastIndexOf(']')
+  const slice = (start !== -1 && end > start) ? text.slice(start, end + 1) : '[]'
 
   try {
-    const result = JSON.parse(cleaned)
+    const result = JSON.parse(slice)
     console.log('[diktat] parsed actions:', result)
     return Array.isArray(result) ? result : []
   } catch (parseErr) {
-    console.error('[diktat] JSON parse failed:', parseErr.message, '— raw text was:', text)
+    console.error('[diktat] JSON parse failed:', parseErr.message, '— slice was:', slice)
     return []
   }
 }
