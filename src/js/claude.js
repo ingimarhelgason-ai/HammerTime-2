@@ -131,6 +131,8 @@ export async function interpretDiktat({ transcript, tasks, projectAddress }) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 30000)
 
+  console.log('[diktat] starting fetch, transcript length:', transcript?.length, 'tasks:', tasks?.length)
+
   let response
   try {
     response = await fetch(API_URL, {
@@ -177,15 +179,19 @@ Rules:
     })
   } catch (err) {
     clearTimeout(timeout)
+    console.error('[diktat] fetch threw:', err.name, err.message)
     if (err.name === 'AbortError') throw new Error('API-kald tog for lang tid. Prøv igen.')
     throw err
   }
   clearTimeout(timeout)
 
+  console.log('[diktat] response status:', response.status, response.statusText)
+
   if (!response.ok) {
     let errBody
     try { errBody = await response.json() } catch { errBody = {} }
     const msg = errBody?.error?.message || `HTTP ${response.status}`
+    console.error('[diktat] API error body:', errBody)
     if (response.status === 401) throw new Error('Ugyldig API-nøgle.')
     if (response.status === 429) throw new Error('API-kvote overskredet. Vent et øjeblik.')
     throw new Error(`API fejl: ${msg}`)
@@ -193,13 +199,15 @@ Rules:
 
   const data = await response.json()
   const text = data.content?.[0]?.text?.trim() || '[]'
+  console.log('[diktat] raw response text:', text)
   const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
 
   try {
     const result = JSON.parse(cleaned)
+    console.log('[diktat] parsed actions:', result)
     return Array.isArray(result) ? result : []
-  } catch {
-    console.error('interpretDiktat: Claude returnerede ikke-JSON:', text)
+  } catch (parseErr) {
+    console.error('[diktat] JSON parse failed:', parseErr.message, '— raw text was:', text)
     return []
   }
 }

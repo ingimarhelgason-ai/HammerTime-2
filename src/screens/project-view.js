@@ -132,7 +132,8 @@ export async function render(container, params = {}) {
             } else {
               openDiktatSheet(actions)
             }
-          } catch {
+          } catch (err) {
+            console.error('[diktat] interpretDiktat threw in onResult:', err)
             setIdle()
             showToast('Analyse fejlede — prøv igen', true)
           }
