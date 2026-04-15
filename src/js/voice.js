@@ -18,14 +18,22 @@ export function startVoiceInput({ onResult, onError, onStart, onEnd, lang = 'da-
   recognition.lang             = lang
   recognition.interimResults   = false
   recognition.maxAlternatives  = 1
-  recognition.continuous       = false
+  recognition.continuous       = true
+
+  let _accumulated = ''
 
   recognition.onstart = () => onStart?.()
-  recognition.onend   = () => onEnd?.()
 
   recognition.onresult = e => {
-    const transcript = e.results?.[0]?.[0]?.transcript ?? ''
-    if (transcript) onResult?.(transcript)
+    // In continuous mode results accumulate — e.resultIndex points to the newest segment
+    const segment = e.results?.[e.resultIndex]?.[0]?.transcript ?? ''
+    if (segment) _accumulated += (_accumulated ? ' ' : '') + segment
+  }
+
+  recognition.onend = () => {
+    // Deliver full accumulated transcript before notifying end
+    if (_accumulated) onResult?.(_accumulated)
+    onEnd?.()
   }
 
   recognition.onerror = e => {
