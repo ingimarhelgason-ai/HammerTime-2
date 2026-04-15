@@ -6,16 +6,18 @@ import { interpretDiktat } from '../js/claude.js'
 
 // ─── STATE ──────────────────────────────────────────────────
 
-let _unsubTasks  = null
-let _unsubLogs   = null
-let _taskMap     = {}
-let _logFilter   = null
-let _allLogs     = []
-let _tasks       = []
-let _projectId   = null
-let _project     = null
-let _container   = null
-let _stopVoice   = null
+let _unsubTasks       = null
+let _unsubLogs        = null
+let _taskMap          = {}
+let _logFilter        = null
+let _allLogs          = []
+let _tasks            = []
+let _projectId        = null
+let _project          = null
+let _container        = null
+let _stopVoice        = null
+let _origConsoleLog   = null
+let _origConsoleError = null
 
 // ─── COLUMN DEFINITIONS ─────────────────────────────────────
 
@@ -39,6 +41,33 @@ export async function render(container, params = {}) {
   _taskMap     = {}
 
   container.innerHTML = buildShell()
+
+  // ── Temporary debug panel ──────────────────────────────────
+  _origConsoleLog   = console.log
+  _origConsoleError = console.error
+  const _appendDebug = (level, args) => {
+    const panel = _container?.querySelector('#debug-panel')
+    const lines = _container?.querySelector('#debug-lines')
+    if (!panel || !lines) return
+    panel.style.display = 'flex'
+    const el  = document.createElement('div')
+    const ts  = new Date().toLocaleTimeString('en', { hour12: false })
+    el.style.cssText = `color:${level === 'error' ? '#ff6b6b' : '#7fff7f'};padding:1px 0;border-bottom:1px solid #111;word-break:break-all;`
+    el.textContent   = `${ts}  ${args.map(a => (a !== null && typeof a === 'object') ? JSON.stringify(a) : String(a)).join(' ')}`
+    lines.appendChild(el)
+    lines.scrollTop = lines.scrollHeight
+  }
+  console.log   = (...args) => { _origConsoleLog(...args);   _appendDebug('log',   args) }
+  console.error = (...args) => { _origConsoleError(...args); _appendDebug('error', args) }
+  container.querySelector('#debug-clear').addEventListener('click', () => {
+    const lines = container.querySelector('#debug-lines')
+    if (lines) lines.innerHTML = ''
+  })
+  container.querySelector('#debug-close').addEventListener('click', () => {
+    const panel = container.querySelector('#debug-panel')
+    if (panel) panel.style.display = 'none'
+  })
+  // ──────────────────────────────────────────────────────────
 
   // Back
   container.querySelector('#btn-back').addEventListener('click', () => window.navigate('home'))
@@ -184,6 +213,8 @@ export function destroy() {
   if (_unsubTasks) { _unsubTasks(); _unsubTasks = null }
   if (_unsubLogs)  { _unsubLogs();  _unsubLogs  = null }
   _stopVoice?.(); _stopVoice = null
+  if (_origConsoleLog)   { console.log   = _origConsoleLog;   _origConsoleLog   = null }
+  if (_origConsoleError) { console.error = _origConsoleError; _origConsoleError = null }
   _taskMap = {}; _logFilter = null; _allLogs = []; _tasks = []
   _projectId = null; _project = null; _container = null
 }
@@ -268,6 +299,18 @@ function buildShell() {
         <span class="fab-diktat-icon">🎤</span>
         <span>Diktat</span>
       </button>
+
+      <!-- Temporary debug panel -->
+      <div id="debug-panel" style="display:none;position:fixed;top:0;left:0;right:0;z-index:300;background:#0a0a0a;border-bottom:1px solid #2a2a2a;flex-direction:column;max-height:45vh;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-bottom:1px solid #1a1a1a;flex-shrink:0;">
+          <span style="font-family:monospace;font-size:10px;color:#555;letter-spacing:0.05em;">DEBUG LOG</span>
+          <div style="display:flex;gap:10px;">
+            <button id="debug-clear" style="font-family:monospace;font-size:10px;color:#888;background:none;border:none;cursor:pointer;padding:2px 6px;">Clear</button>
+            <button id="debug-close" style="font-family:monospace;font-size:10px;color:#888;background:none;border:none;cursor:pointer;padding:2px 6px;">✕</button>
+          </div>
+        </div>
+        <div id="debug-lines" style="overflow-y:auto;padding:6px 10px;font-family:monospace;font-size:11px;line-height:1.5;"></div>
+      </div>
     </div>
   `
 }
