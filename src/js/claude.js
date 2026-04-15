@@ -31,6 +31,7 @@ export async function parseArbejtsseddel(pdfBase64) {
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
         'content-type': 'application/json'
       },
       body: JSON.stringify({
@@ -141,6 +142,7 @@ export async function interpretDiktat({ transcript, tasks, projectAddress }) {
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
         'content-type': 'application/json'
       },
       body: JSON.stringify({
