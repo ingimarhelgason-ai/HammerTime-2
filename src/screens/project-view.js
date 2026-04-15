@@ -377,16 +377,15 @@ function openTaskEditSheet(task) {
 
   body.innerHTML = `
     <div class="task-edit-form">
-      <div class="task-edit-label">OPGAVENAVN</div>
+      <div class="task-edit-label-row">
+        <div class="task-edit-label">OPGAVENAVN</div>
+        ${hasMic ? `<button class="btn-ghost btn-hero-mic" id="task-name-mic" aria-label="Dikter opgavenavn">${iconMic()}</button>` : ''}
+      </div>
       <input id="task-edit-name" class="task-edit-input" type="text"
              value="${escapeAttr(task.name || '')}" maxlength="200" autocomplete="off">
       <div class="task-edit-label-row" style="margin-top:14px;">
         <div class="task-edit-label">BESKRIVELSE</div>
-        ${hasMic ? `
-        <button class="btn-icon task-desc-mic" id="task-desc-mic" aria-label="Dikter beskrivelse">
-          ${iconMic()}
-        </button>
-        ` : ''}
+        ${hasMic ? `<button class="btn-ghost btn-hero-mic" id="task-desc-mic" aria-label="Dikter beskrivelse">${iconMic()}</button>` : ''}
       </div>
       <textarea id="task-edit-desc" class="task-edit-textarea"
                 placeholder="Instruktioner, mål, materialer…" rows="5">${escapeHtml(task.description || '')}</textarea>
@@ -399,40 +398,9 @@ function openTaskEditSheet(task) {
 
   overlay.classList.add('open')
 
-  // Mic toggle for beskrivelse dictation
   if (hasMic) {
-    const micBtn   = body.querySelector('#task-desc-mic')
-    let isRecording = false
-
-    micBtn.addEventListener('click', () => {
-      if (isRecording) {
-        _stopVoice?.()
-        // onEnd will clear state
-      } else {
-        const voice = startVoiceInput({
-          lang:    'da-DK',
-          onStart: () => { isRecording = true; micBtn.classList.add('mic-recording') },
-          onEnd:   () => { isRecording = false; _stopVoice = null; micBtn.classList.remove('mic-recording') },
-          onResult: transcript => {
-            const textarea = body.querySelector('#task-edit-desc')
-            if (!textarea) return
-            const cur = textarea.value
-            textarea.value = cur ? cur + ' ' + transcript : transcript
-          },
-          onError: code => {
-            isRecording = false
-            _stopVoice = null
-            micBtn.classList.remove('mic-recording')
-            if (code === 'not-supported') {
-              showToast('Stemmeindtastning ikke understøttet i denne browser', true)
-            } else {
-              showToast('Kunne ikke optage — prøv igen', true)
-            }
-          },
-        })
-        _stopVoice = voice.stop
-      }
-    })
+    attachHoldMic(body.querySelector('#task-name-mic'), () => body.querySelector('#task-edit-name'), body)
+    attachHoldMic(body.querySelector('#task-desc-mic'), () => body.querySelector('#task-edit-desc'), body)
   }
 
   body.querySelector('#task-edit-cancel').addEventListener('click', () => closeTaskEditSheet())
@@ -464,6 +432,39 @@ function openTaskEditSheet(task) {
 function closeTaskEditSheet() {
   _stopVoice?.(); _stopVoice = null
   _container?.querySelector('#task-edit-overlay')?.classList.remove('open')
+}
+
+function attachHoldMic(btn, getTarget, body) {
+  const doStop = () => {
+    _stopVoice?.(); _stopVoice = null
+    btn.classList.remove('mic-recording')
+  }
+  btn.addEventListener('pointerdown', e => {
+    e.preventDefault()
+    btn.setPointerCapture(e.pointerId)
+    // stop any other ongoing recording first
+    _stopVoice?.(); _stopVoice = null
+    body.querySelectorAll('.mic-recording').forEach(el => el.classList.remove('mic-recording'))
+    const voice = startVoiceInput({
+      lang:    'da-DK',
+      onStart: () => btn.classList.add('mic-recording'),
+      onEnd:   () => { btn.classList.remove('mic-recording'); _stopVoice = null },
+      onResult: transcript => {
+        const target = getTarget()
+        if (!target) return
+        target.value = target.value ? target.value + ' ' + transcript : transcript
+      },
+      onError: code => {
+        btn.classList.remove('mic-recording'); _stopVoice = null
+        if (code === 'not-supported') showToast('Stemmeindtastning ikke understøttet i denne browser', true)
+        else showToast('Kunne ikke optage — prøv igen', true)
+      },
+    })
+    _stopVoice = voice.stop
+  })
+  btn.addEventListener('pointerup',          doStop)
+  btn.addEventListener('pointercancel',      doStop)
+  btn.addEventListener('lostpointercapture', doStop)
 }
 
 // ─── FEED SHEET ──────────────────────────────────────────────

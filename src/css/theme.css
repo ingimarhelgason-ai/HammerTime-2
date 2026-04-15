@@ -3085,18 +3085,9 @@ html, body {
   color: var(--text);
 }
 
-/* Beskrivelse label row in task edit sheet */
+/* Label rows in task edit sheet (name + beskrivelse) */
 .task-edit-label-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-
-.task-desc-mic {
-  color: var(--text3);
-  transition: color 0.15s;
-}
-
-.task-desc-mic:active {
-  color: var(--text2);
 }
