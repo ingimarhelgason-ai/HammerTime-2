@@ -96,37 +96,30 @@ export async function render(container, params = {}) {
       fab.style.pointerEvents = 'none'
     }
 
-    const doStop = reason => {
-      console.log('[diktat fab] doStop called, reason:', reason)
-      _stopVoice?.(); _stopVoice = null
-      fab.style.transform = ''
-    }
+    let _isRecording = false
 
-    fab.addEventListener('pointerdown', e => {
-      console.log('[diktat fab] pointerdown, _diktatPending:', _diktatPending)
+    fab.addEventListener('click', () => {
       if (_diktatPending) return
-      e.preventDefault()
-      fab.setPointerCapture(e.pointerId)
-      console.log('[diktat fab] setPointerCapture called')
-      _stopVoice?.(); _stopVoice = null
-      setRecording()
-      console.log('[diktat fab] setRecording called — button should be red')
-      fab.style.transform = 'scale(1.06)'
 
-      let gotResult = false
+      if (_isRecording) {
+        // Second tap — stop and trigger analysis
+        _stopVoice?.(); _stopVoice = null
+        return
+      }
+
+      // First tap — start recording
+      _isRecording = true
+      setRecording()
+
       const lang = localStorage.getItem('voiceLang') || 'da-DK'
-      console.log('[diktat fab] calling startVoiceInput, lang:', lang)
       const voice = startVoiceInput({
         lang,
-        onStart: () => { console.log('[diktat fab] onStart callback fired — mic is live') },
+        onStart: () => {},
         onEnd: () => {
-          console.log('[diktat fab] onEnd callback fired, gotResult:', gotResult, '_diktatPending:', _diktatPending)
-          fab.style.transform = ''
-          if (!gotResult && !_diktatPending) setIdle()
+          _isRecording = false
+          if (!_diktatPending) setIdle()
         },
         onResult: async transcript => {
-          console.log('[diktat fab] onResult callback fired, transcript:', transcript)
-          gotResult = true
           const words = transcript.trim().split(/\s+/).filter(Boolean)
           if (words.length < 5) {
             showToast('Prøv igen — sig mere', true)
@@ -153,19 +146,13 @@ export async function render(container, params = {}) {
           }
         },
         onError: code => {
-          console.log('[diktat fab] onError callback fired, code:', code)
           setIdle()
           if (code === 'not-supported') showToast('Stemmeindtastning ikke understøttet i denne browser', true)
           else showToast('Kunne ikke optage — prøv igen', true)
         },
       })
       _stopVoice = voice.stop
-      console.log('[diktat fab] startVoiceInput returned, _stopVoice set')
     })
-
-    fab.addEventListener('pointerup',          () => doStop('pointerup'))
-    fab.addEventListener('pointercancel',      () => doStop('pointercancel'))
-    fab.addEventListener('lostpointercapture', () => doStop('lostpointercapture'))
   }
 
   try {
