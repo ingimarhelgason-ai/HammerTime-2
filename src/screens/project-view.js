@@ -96,29 +96,36 @@ export async function render(container, params = {}) {
       fab.style.pointerEvents = 'none'
     }
 
-    const doStop = () => {
+    const doStop = reason => {
+      console.log('[diktat fab] doStop called, reason:', reason)
       _stopVoice?.(); _stopVoice = null
       fab.style.transform = ''
     }
 
     fab.addEventListener('pointerdown', e => {
+      console.log('[diktat fab] pointerdown, _diktatPending:', _diktatPending)
       if (_diktatPending) return
       e.preventDefault()
       fab.setPointerCapture(e.pointerId)
-      _stopVoice?.(); _stopVoice = null  // stop any other active mic
+      console.log('[diktat fab] setPointerCapture called')
+      _stopVoice?.(); _stopVoice = null
       setRecording()
+      console.log('[diktat fab] setRecording called — button should be red')
       fab.style.transform = 'scale(1.06)'
 
       let gotResult = false
       const lang = localStorage.getItem('voiceLang') || 'da-DK'
+      console.log('[diktat fab] calling startVoiceInput, lang:', lang)
       const voice = startVoiceInput({
         lang,
-        onStart: () => {},
+        onStart: () => { console.log('[diktat fab] onStart callback fired — mic is live') },
         onEnd: () => {
+          console.log('[diktat fab] onEnd callback fired, gotResult:', gotResult, '_diktatPending:', _diktatPending)
           fab.style.transform = ''
           if (!gotResult && !_diktatPending) setIdle()
         },
         onResult: async transcript => {
+          console.log('[diktat fab] onResult callback fired, transcript:', transcript)
           gotResult = true
           const words = transcript.trim().split(/\s+/).filter(Boolean)
           if (words.length < 5) {
@@ -146,17 +153,19 @@ export async function render(container, params = {}) {
           }
         },
         onError: code => {
+          console.log('[diktat fab] onError callback fired, code:', code)
           setIdle()
           if (code === 'not-supported') showToast('Stemmeindtastning ikke understøttet i denne browser', true)
           else showToast('Kunne ikke optage — prøv igen', true)
         },
       })
       _stopVoice = voice.stop
+      console.log('[diktat fab] startVoiceInput returned, _stopVoice set')
     })
 
-    fab.addEventListener('pointerup',          doStop)
-    fab.addEventListener('pointercancel',      doStop)
-    fab.addEventListener('lostpointercapture', doStop)
+    fab.addEventListener('pointerup',          () => doStop('pointerup'))
+    fab.addEventListener('pointercancel',      () => doStop('pointercancel'))
+    fab.addEventListener('lostpointercapture', () => doStop('lostpointercapture'))
   }
 
   try {
