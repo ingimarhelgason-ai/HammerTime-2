@@ -76,22 +76,29 @@ export async function render(container, params = {}) {
     const setIdle = () => {
       _diktatPending = false
       fab.innerHTML = `<span class="fab-diktat-icon">🎤</span><span>Diktat</span>`
-      fab.classList.remove('mic-recording')
+      fab.style.background = ''
+      fab.style.color = ''
       fab.style.pointerEvents = ''
       fab.style.transform = ''
+    }
+
+    const setRecording = () => {
+      fab.innerHTML = `<span class="fab-diktat-icon">🎤</span><span>Optager…</span>`
+      fab.style.background = 'var(--danger)'
+      fab.style.color = '#fff'
     }
 
     const setProcessing = () => {
       _diktatPending = true
       fab.innerHTML = `<span class="spinner fab-diktat-spinner"></span><span>Analyserer…</span>`
-      fab.classList.remove('mic-recording')
+      fab.style.background = 'var(--surface3)'
+      fab.style.color = 'var(--text2)'
       fab.style.pointerEvents = 'none'
     }
 
     const doStop = () => {
       _stopVoice?.(); _stopVoice = null
       fab.style.transform = ''
-      if (!_diktatPending) fab.classList.remove('mic-recording')
     }
 
     fab.addEventListener('pointerdown', e => {
@@ -99,7 +106,7 @@ export async function render(container, params = {}) {
       e.preventDefault()
       fab.setPointerCapture(e.pointerId)
       _stopVoice?.(); _stopVoice = null  // stop any other active mic
-      fab.classList.add('mic-recording')
+      setRecording()
       fab.style.transform = 'scale(1.06)'
 
       let gotResult = false
