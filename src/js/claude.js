@@ -117,6 +117,94 @@ Returner kun JSON, intet andet.`
 }
 
 /**
+ * Interpret a voice diktat transcript into structured project actions.
+ *
+ * @param {string} transcript - Raw voice transcript from the site manager
+ * @param {Array}  tasks      - Current task list [{ id, name, status }]
+ * @param {string} projectAddress
+ * @returns {Promise<Array>}  Array of action objects
+ */
+export async function interpretDiktat({ transcript, tasks, projectAddress }) {
+  const apiKey = getApiKey()
+  if (!apiKey) throw new Error('Ingen API-nøgle')
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 30000)
+
+  let response
+  try {
+    response = await fetch(API_URL, {
+      signal: controller.signal,
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 1500,
+        system: `You are a construction project assistant. The user will give you a voice transcript from a site manager briefing about a project. Extract structured actions from it.
+
+You will be given:
+- transcript: what the manager said
+- projectAddress: the project location
+- tasks: the current task list (id, name, status)
+
+Respond ONLY with a JSON array of actions. No preamble, no markdown. Each action is one of:
+
+{ "type": "new_task", "name": string, "description": string | null, "estimatedHours": number | null }
+{ "type": "task_note", "taskId": string, "taskName": string, "note": string }
+{ "type": "status_change", "taskId": string, "taskName": string, "newStatus": "not started" | "in progress" | "done" }
+{ "type": "project_note", "note": string }
+
+Rules:
+- Clean up the language — turn casual speech into professional task names and descriptions
+- Match notes and status changes to existing tasks by topic, not exact wording
+- If something doesn't match any existing task, create a new_task
+- If the manager mentions something is finished or done, emit a status_change to 'done'
+- Respond in the same language the transcript is in
+- If nothing actionable is found, return an empty array []`,
+        messages: [{
+          role: 'user',
+          content: JSON.stringify({
+            transcript,
+            projectAddress,
+            tasks: tasks.map(t => ({ id: t.id, name: t.name, status: t.status }))
+          })
+        }]
+      })
+    })
+  } catch (err) {
+    clearTimeout(timeout)
+    if (err.name === 'AbortError') throw new Error('API-kald tog for lang tid. Prøv igen.')
+    throw err
+  }
+  clearTimeout(timeout)
+
+  if (!response.ok) {
+    let errBody
+    try { errBody = await response.json() } catch { errBody = {} }
+    const msg = errBody?.error?.message || `HTTP ${response.status}`
+    if (response.status === 401) throw new Error('Ugyldig API-nøgle.')
+    if (response.status === 429) throw new Error('API-kvote overskredet. Vent et øjeblik.')
+    throw new Error(`API fejl: ${msg}`)
+  }
+
+  const data = await response.json()
+  const text = data.content?.[0]?.text?.trim() || '[]'
+  const cleaned = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
+
+  try {
+    const result = JSON.parse(cleaned)
+    return Array.isArray(result) ? result : []
+  } catch {
+    console.error('interpretDiktat: Claude returnerede ikke-JSON:', text)
+    return []
+  }
+}
+
+/**
  * Suggest task tags for untagged logs at end of day.
  *
  * @param {Array} logs - Array of log objects with note/type fields

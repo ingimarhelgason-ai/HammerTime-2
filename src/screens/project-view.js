@@ -1,7 +1,8 @@
-import { getProject, subscribeToTasks, subscribeToLogs, updateTask, createTask } from '../js/api.js'
+import { getProject, subscribeToTasks, subscribeToLogs, updateTask, createTask, addTask, addLog } from '../js/api.js'
 import { formatDateShort, formatTimestamp, relativeDate } from '../js/utils.js'
 import { getActive } from '../js/activeTask.js'
 import { startVoiceInput } from '../js/voice.js'
+import { interpretDiktat } from '../js/claude.js'
 
 // ─── STATE ──────────────────────────────────────────────────
 
@@ -60,6 +61,95 @@ export async function render(container, params = {}) {
   container.querySelector('#move-overlay').addEventListener('click', e => {
     if (e.target.id === 'move-overlay') closeMoveSheet()
   })
+
+  // Diktat sheet
+  container.querySelector('#btn-diktat-close').addEventListener('click', () => closeDiktatSheet())
+  container.querySelector('#diktat-overlay').addEventListener('click', e => {
+    if (e.target.id === 'diktat-overlay') closeDiktatSheet()
+  })
+
+  // Diktat FAB — hold to record
+  const fab = container.querySelector('#fab-diktat')
+  if (fab) {
+    let _diktatPending = false
+
+    const setIdle = () => {
+      _diktatPending = false
+      fab.innerHTML = `<span class="fab-diktat-icon">🎤</span><span>Diktat</span>`
+      fab.classList.remove('mic-recording')
+      fab.style.pointerEvents = ''
+      fab.style.transform = ''
+    }
+
+    const setProcessing = () => {
+      _diktatPending = true
+      fab.innerHTML = `<span class="spinner fab-diktat-spinner"></span><span>Analyserer…</span>`
+      fab.classList.remove('mic-recording')
+      fab.style.pointerEvents = 'none'
+    }
+
+    const doStop = () => {
+      _stopVoice?.(); _stopVoice = null
+      fab.style.transform = ''
+      if (!_diktatPending) fab.classList.remove('mic-recording')
+    }
+
+    fab.addEventListener('pointerdown', e => {
+      if (_diktatPending) return
+      e.preventDefault()
+      fab.setPointerCapture(e.pointerId)
+      _stopVoice?.(); _stopVoice = null  // stop any other active mic
+      fab.classList.add('mic-recording')
+      fab.style.transform = 'scale(1.06)'
+
+      let gotResult = false
+      const lang = localStorage.getItem('voiceLang') || 'da-DK'
+      const voice = startVoiceInput({
+        lang,
+        onStart: () => {},
+        onEnd: () => {
+          fab.style.transform = ''
+          if (!gotResult && !_diktatPending) setIdle()
+        },
+        onResult: async transcript => {
+          gotResult = true
+          const words = transcript.trim().split(/\s+/).filter(Boolean)
+          if (words.length < 5) {
+            showToast('Prøv igen — sig mere', true)
+            setIdle()
+            return
+          }
+          setProcessing()
+          try {
+            const actions = await interpretDiktat({
+              transcript,
+              tasks: _tasks,
+              projectAddress: _project?.address || ''
+            })
+            setIdle()
+            if (!actions || actions.length === 0) {
+              showToast('Intet at tilføje — prøv igen', true)
+            } else {
+              openDiktatSheet(actions)
+            }
+          } catch {
+            setIdle()
+            showToast('Analyse fejlede — prøv igen', true)
+          }
+        },
+        onError: code => {
+          setIdle()
+          if (code === 'not-supported') showToast('Stemmeindtastning ikke understøttet i denne browser', true)
+          else showToast('Kunne ikke optage — prøv igen', true)
+        },
+      })
+      _stopVoice = voice.stop
+    })
+
+    fab.addEventListener('pointerup',          doStop)
+    fab.addEventListener('pointercancel',      doStop)
+    fab.addEventListener('lostpointercapture', doStop)
+  }
 
   try {
     _project = await getProject(projectId)
@@ -156,6 +246,24 @@ function buildShell() {
           <div class="sheet-body" id="feed-body"></div>
         </div>
       </div>
+
+      <!-- Diktat review sheet -->
+      <div class="sheet-overlay" id="diktat-overlay">
+        <div class="sheet sheet-tall">
+          <div class="sheet-handle"></div>
+          <div class="sheet-header">
+            <span class="sheet-title">Diktat — gennemse</span>
+            <button class="btn-icon sheet-close" id="btn-diktat-close">${iconClose()}</button>
+          </div>
+          <div class="sheet-body" id="diktat-body"></div>
+        </div>
+      </div>
+
+      <!-- Diktat FAB -->
+      <button class="fab-diktat" id="fab-diktat" aria-label="Diktat">
+        <span class="fab-diktat-icon">🎤</span>
+        <span>Diktat</span>
+      </button>
     </div>
   `
 }
@@ -465,6 +573,134 @@ function attachHoldMic(btn, getTarget, body) {
   btn.addEventListener('pointerup',          doStop)
   btn.addEventListener('pointercancel',      doStop)
   btn.addEventListener('lostpointercapture', doStop)
+}
+
+// ─── DIKTAT REVIEW SHEET ────────────────────────────────────
+
+function openDiktatSheet(actions) {
+  const overlay = _container?.querySelector('#diktat-overlay')
+  const body    = _container?.querySelector('#diktat-body')
+  if (!overlay || !body) return
+
+  const checkAllDone = () => {
+    if (body.querySelectorAll('.diktat-action-card').length === 0) {
+      body.innerHTML = `<div class="diktat-all-done">Alt håndteret 👍</div>`
+      setTimeout(() => closeDiktatSheet(), 1500)
+    }
+  }
+
+  body.innerHTML = actions.map((action, i) => buildDiktatActionCard(action, i)).join('')
+
+  body.querySelectorAll('.diktat-confirm').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const card  = btn.closest('.diktat-action-card')
+      const index = parseInt(btn.dataset.index, 10)
+      btn.disabled = true
+      btn.textContent = '…'
+      try {
+        await executeAction(actions[index])
+        card.remove()
+        checkAllDone()
+      } catch {
+        showToast('Fejl — prøv igen', true)
+        btn.disabled = false
+        btn.textContent = '✓ Tilføj'
+      }
+    })
+  })
+
+  body.querySelectorAll('.diktat-dismiss').forEach(btn => {
+    btn.addEventListener('click', () => {
+      btn.closest('.diktat-action-card').remove()
+      checkAllDone()
+    })
+  })
+
+  overlay.classList.add('open')
+}
+
+function closeDiktatSheet() {
+  _container?.querySelector('#diktat-overlay')?.classList.remove('open')
+}
+
+function buildDiktatActionCard(action, i) {
+  const btns = `
+    <div class="diktat-action-btns">
+      <button class="btn-primary diktat-confirm" data-index="${i}" style="flex:1;font-size:14px;padding:10px 0;">✓ Tilføj</button>
+      <button class="btn-ghost  diktat-dismiss"  data-index="${i}" style="flex:1;font-size:14px;padding:10px 0;">✕ Afvis</button>
+    </div>
+  `
+  switch (action.type) {
+    case 'new_task':
+      return `
+        <div class="diktat-action-card" data-index="${i}">
+          <div class="diktat-action-label" style="color:var(--accent)">NY OPGAVE</div>
+          <div class="diktat-action-name">${escapeHtml(action.name || '')}</div>
+          ${action.description ? `<div class="diktat-action-body">${escapeHtml(action.description)}</div>` : ''}
+          ${action.estimatedHours ? `<div class="diktat-action-meta">${action.estimatedHours} timer</div>` : ''}
+          ${btns}
+        </div>`
+
+    case 'task_note':
+      return `
+        <div class="diktat-action-card" data-index="${i}">
+          <div class="diktat-action-label">NOTE</div>
+          <div class="diktat-action-task">${escapeHtml(action.taskName || '')}</div>
+          <div class="diktat-action-body">${escapeHtml(action.note || '')}</div>
+          ${btns}
+        </div>`
+
+    case 'status_change': {
+      const currentTask = _tasks.find(t => t.id === action.taskId)
+      const oldLabel    = statusLabel(currentTask?.status || '')
+      const newLabel    = statusLabel(action.newStatus)
+      return `
+        <div class="diktat-action-card" data-index="${i}">
+          <div class="diktat-action-label">STATUSÆNDRING</div>
+          <div class="diktat-action-name">${escapeHtml(action.taskName || '')}</div>
+          <div class="diktat-action-body">${escapeHtml(oldLabel)} → ${escapeHtml(newLabel)}</div>
+          ${btns}
+        </div>`
+    }
+
+    case 'project_note':
+      return `
+        <div class="diktat-action-card" data-index="${i}">
+          <div class="diktat-action-label">PROJEKTNOTAT</div>
+          <div class="diktat-action-body">${escapeHtml(action.note || '')}</div>
+          ${btns}
+        </div>`
+
+    default:
+      return ''
+  }
+}
+
+async function executeAction(action) {
+  switch (action.type) {
+    case 'new_task':
+      await addTask({
+        projectId:      _projectId,
+        name:           action.name,
+        description:    action.description    || null,
+        estimatedHours: action.estimatedHours || null,
+        status:         'not started'
+      })
+      break
+    case 'task_note':
+      await addLog({ projectId: _projectId, taskId: action.taskId, type: 'note', note: action.note, photoUrl: null, location: null })
+      break
+    case 'status_change':
+      await updateTask(action.taskId, { status: action.newStatus })
+      break
+    case 'project_note':
+      await addLog({ projectId: _projectId, taskId: null, type: 'note', note: action.note, photoUrl: null, location: null })
+      break
+  }
+}
+
+function statusLabel(status) {
+  return { 'not started': 'Ikke startet', 'in progress': 'I gang', 'done': 'Færdig' }[status] || status
 }
 
 // ─── FEED SHEET ──────────────────────────────────────────────

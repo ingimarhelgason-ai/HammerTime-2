@@ -3091,3 +3091,103 @@ html, body {
   align-items: center;
   justify-content: space-between;
 }
+
+/* ─── DIKTAT FAB ─── */
+.fab-diktat {
+  position: fixed;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  right: 20px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #1a1400;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(240, 192, 64, 0.35);
+  touch-action: none;
+  -webkit-tap-highlight-color: transparent;
+  z-index: 50;
+  transition: transform 0.1s, box-shadow 0.1s;
+  gap: 2px;
+  cursor: pointer;
+  border: none;
+}
+
+.fab-diktat:active {
+  box-shadow: 0 2px 8px rgba(240, 192, 64, 0.25);
+}
+
+.fab-diktat-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.fab-diktat-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid #1a1400;
+  border-top-color: transparent;
+}
+
+/* ─── DIKTAT ACTION CARDS ─── */
+.diktat-action-card {
+  background: var(--surface2);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 10px;
+  border: 1px solid var(--border);
+}
+
+.diktat-action-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text2);
+  margin-bottom: 6px;
+}
+
+.diktat-action-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+  line-height: 1.35;
+}
+
+.diktat-action-task {
+  font-size: 12px;
+  color: var(--text2);
+  margin-bottom: 4px;
+}
+
+.diktat-action-body {
+  font-size: 14px;
+  color: var(--text2);
+  line-height: 1.45;
+  margin-bottom: 4px;
+}
+
+.diktat-action-meta {
+  font-size: 12px;
+  color: var(--text3);
+  margin-bottom: 4px;
+}
+
+.diktat-action-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.diktat-all-done {
+  text-align: center;
+  padding: 48px 0;
+  font-size: 17px;
+  color: var(--text);
+}

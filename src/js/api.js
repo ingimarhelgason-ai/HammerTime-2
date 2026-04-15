@@ -82,14 +82,30 @@ export async function updateTask(taskId, data) {
 }
 
 /**
- * Create a single task for a project.
+ * Create a single task for a project (name only, quick path).
  */
 export async function createTask(projectId, name) {
   const ref = await addDoc(collection(db, 'tasks'), {
     projectId,
     name,
+    description: null,
     estimatedHours: null,
     status: 'not started',
+    createdAt: serverTimestamp()
+  })
+  return ref.id
+}
+
+/**
+ * Create a task with full fields. Returns the new task ID.
+ */
+export async function addTask({ projectId, name, description, estimatedHours, status }) {
+  const ref = await addDoc(collection(db, 'tasks'), {
+    projectId,
+    name,
+    description: description || null,
+    estimatedHours: estimatedHours ?? null,
+    status: status || 'not started',
     createdAt: serverTimestamp()
   })
   return ref.id
