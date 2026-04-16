@@ -82,7 +82,7 @@ export function destroy() {
 function buildShell() {
   return `
     <div class="screen" id="feed-screen">
-      <div class="top-bar">
+      <div class="top-bar" style="border-bottom:1px solid var(--border);">
         <button class="btn-back" id="btn-back" aria-label="Tilbage">
           ${iconBack()}
         </button>
@@ -96,7 +96,7 @@ function buildShell() {
       <div id="feed-pills-row"></div>
 
       <div class="screen-body" id="feed-body">
-        <div id="feed-grid-wrap"></div>
+        <div id="feed-grid-wrap" style="margin-top:12px;"></div>
         <div class="safe-bottom"></div>
       </div>
 

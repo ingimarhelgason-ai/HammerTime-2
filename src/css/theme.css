@@ -2549,10 +2549,10 @@ html, body {
 /* ─── LOG FILTER ─── */
 .log-filter-row {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
-  padding: 0 14px 12px;
+  padding: 12px 16px;
   scrollbar-width: none;
 }
 
@@ -3415,7 +3415,7 @@ html, body {
   display: flex;
   flex-direction: column;
   cursor: pointer;
-  margin: 12px 16px 0;
+  margin: 12px 16px 12px;
   -webkit-tap-highlight-color: transparent;
   transition: background 0.12s;
 }
