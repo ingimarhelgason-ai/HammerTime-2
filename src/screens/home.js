@@ -8,6 +8,7 @@ let _unsubProjects       = null
 let _unsubTaskLogs       = null
 let _activeTaskIdForFeed = null
 let _activeTaskDesc      = null
+let _activeTaskRefPhotos = null
 let _projects            = []
 let _stopVoice           = null
 
@@ -35,6 +36,13 @@ export function render(container) {
   container.querySelector('#home-task-feed').addEventListener('click', e => {
     const thumb = e.target.closest('img.home-feed-thumb')
     if (thumb?.src) { openLightbox(container, thumb.src); return }
+
+    const refThumb = e.target.closest('.home-ref-photo-thumb')
+    if (refThumb) {
+      const idx = parseInt(refThumb.dataset.idx, 10)
+      openRefLightbox(container, _activeTaskRefPhotos || [], isNaN(idx) ? 0 : idx)
+      return
+    }
 
     if (e.target.closest('.home-desc-card')) openDescViewSheet(container)
   })
@@ -129,6 +137,7 @@ export function destroy() {
   _stopVoice?.(); _stopVoice = null
   _activeTaskIdForFeed = null
   _activeTaskDesc = null
+  _activeTaskRefPhotos = null
   _projects = []
 }
 
@@ -302,16 +311,18 @@ async function refreshTaskFeed(container, active) {
   if (_unsubTaskLogs) { _unsubTaskLogs(); _unsubTaskLogs = null }
   _activeTaskIdForFeed = taskId
   _activeTaskDesc = null
+  _activeTaskRefPhotos = null
 
   if (!taskId) {
     feedEl.innerHTML = ''
     return
   }
 
-  // Fetch task description before subscribing so first render includes it
+  // Fetch task data before subscribing so first render includes description + reference photos
   try {
     const task = await getTask(taskId)
     _activeTaskDesc = task?.description || null
+    _activeTaskRefPhotos = task?.referencePhotos?.length ? task.referencePhotos : null
   } catch { /* ignore */ }
 
   // Guard: user may have switched away during the async fetch
@@ -329,19 +340,31 @@ function renderHomeFeed(feedEl, logs) {
     <div class="home-task-feed-wrap">
       <div class="home-section-label">SENESTE LOGS</div>
       <div class="home-feed-list">
-        ${buildHomeDescCard(_activeTaskDesc)}
+        ${buildHomeDescCard(_activeTaskDesc, _activeTaskRefPhotos)}
         ${hasLogs ? logs.map(log => buildHomeLogCard(log)).join('') : ''}
       </div>
     </div>
   `
 }
 
-function buildHomeDescCard(desc) {
-  const empty = !desc
+function buildHomeDescCard(desc, refPhotos) {
+  const empty     = !desc
+  const hasPhotos = refPhotos && refPhotos.length > 0
   return `
     <div class="home-desc-card">
       <div class="home-desc-label">Instruktioner</div>
       <div class="home-desc-text${empty ? ' dim' : ''}">${escapeHtml(desc || 'Ingen instruktioner endnu')}</div>
+      ${hasPhotos ? `
+        <div style="display:flex;overflow-x:auto;gap:8px;margin:8px -12px -11px;padding:0 12px 14px;-webkit-overflow-scrolling:touch;">
+          ${refPhotos.map((url, i) => `
+            <img class="home-ref-photo-thumb"
+                 src="${escapeAttr(url)}"
+                 data-idx="${i}"
+                 style="width:80px;height:80px;border-radius:var(--radius-sm);object-fit:cover;cursor:pointer;flex-shrink:0;"
+                 alt="" loading="lazy">
+          `).join('')}
+        </div>
+      ` : ''}
     </div>
   `
 }
@@ -610,6 +633,47 @@ function openLightbox(container, url) {
   `
   lb.addEventListener('click', e => { if (!e.target.closest('.lightbox-img')) lb.remove() })
   lb.querySelector('.lightbox-close').addEventListener('click', () => lb.remove())
+  container.querySelector('#home-screen').appendChild(lb)
+}
+
+function openRefLightbox(container, urls, startIdx) {
+  if (!urls.length) return
+  container.querySelector('#home-ref-lightbox')?.remove()
+
+  let idx = Math.max(0, Math.min(startIdx, urls.length - 1))
+  let touchStartX = 0
+
+  const lb = document.createElement('div')
+  lb.id = 'home-ref-lightbox'
+  lb.style.cssText = 'position:fixed;inset:0;background:#000;z-index:1000;display:flex;align-items:center;justify-content:center;'
+
+  const img = document.createElement('img')
+  img.style.cssText = 'max-width:100vw;max-height:100vh;object-fit:contain;'
+  img.src = urls[idx]
+
+  const closeBtn = document.createElement('button')
+  closeBtn.innerHTML = '&times;'
+  closeBtn.setAttribute('aria-label', 'Luk')
+  closeBtn.style.cssText = 'position:fixed;top:0;right:0;color:#fff;font-size:28px;background:none;border:none;cursor:pointer;padding:16px;z-index:1001;line-height:1;'
+
+  lb.appendChild(img)
+  lb.appendChild(closeBtn)
+
+  const close = () => lb.remove()
+
+  closeBtn.addEventListener('click', e => { e.stopPropagation(); close() })
+  lb.addEventListener('click', e => { if (e.target === lb) close() })
+
+  lb.addEventListener('touchstart', e => {
+    touchStartX = e.touches[0].clientX
+  }, { passive: true })
+
+  lb.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - touchStartX
+    if (dx < -50 && idx < urls.length - 1) { idx++; img.src = urls[idx] }
+    else if (dx > 50 && idx > 0)            { idx--; img.src = urls[idx] }
+  }, { passive: true })
+
   container.querySelector('#home-screen').appendChild(lb)
 }
 

@@ -1,4 +1,5 @@
-import { db } from './firebase.js'
+import { db, storage } from './firebase.js'
+import { compressImage } from './utils.js'
 import {
   collection,
   query,
@@ -12,8 +13,15 @@ import {
   getDoc,
   getDocs,
   serverTimestamp,
-  writeBatch
+  writeBatch,
+  arrayUnion,
+  arrayRemove
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js'
+import {
+  ref as storageRef,
+  uploadBytes,
+  getDownloadURL
+} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js'
 
 // ─── PROJECTS ───────────────────────────────────────────────
 
@@ -214,6 +222,33 @@ export function subscribeToTaskLogs(taskId, callback) {
       })
     callback(logs)
   })
+}
+
+// ─── REFERENCE PHOTOS ───────────────────────────────────────
+
+/**
+ * Compress and upload a reference photo for a task.
+ * Stores at reference/{taskId}/{timestamp}_{filename}.
+ * Updates the task document's referencePhotos array.
+ * Returns the download URL.
+ */
+export async function addReferencePhoto(taskId, file) {
+  const blob = await compressImage(file)
+  const filename = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+  const path = `reference/${taskId}/${Date.now()}_${filename}`
+  const sRef = storageRef(storage, path)
+  await uploadBytes(sRef, blob)
+  const url = await getDownloadURL(sRef)
+  await updateDoc(doc(db, 'tasks', taskId), { referencePhotos: arrayUnion(url) })
+  return url
+}
+
+/**
+ * Remove a reference photo URL from a task's referencePhotos array.
+ * Does NOT delete from Storage.
+ */
+export async function removeReferencePhoto(taskId, url) {
+  await updateDoc(doc(db, 'tasks', taskId), { referencePhotos: arrayRemove(url) })
 }
 
 /**

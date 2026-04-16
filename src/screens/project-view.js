@@ -1,4 +1,4 @@
-import { getProject, subscribeToTasks, subscribeToLogs, updateTask, createTask, addTask, addLog } from '../js/api.js'
+import { getProject, subscribeToTasks, subscribeToLogs, updateTask, createTask, addTask, addLog, addReferencePhoto, removeReferencePhoto } from '../js/api.js'
 import { formatDateShort, formatTimestamp, relativeDate } from '../js/utils.js'
 import { getActive } from '../js/activeTask.js'
 import { startVoiceInput } from '../js/voice.js'
@@ -523,6 +523,19 @@ function showNextTaskNotice() {
 
 // ─── TASK EDIT SHEET ────────────────────────────────────────
 
+function buildEditRefThumb(url) {
+  return `
+    <div class="ref-thumb-wrap" style="position:relative;flex-shrink:0;">
+      <img src="${escapeAttr(url)}"
+           style="width:64px;height:64px;border-radius:var(--radius-sm);object-fit:cover;display:block;"
+           alt="">
+      <button class="ref-del-btn" data-url="${escapeAttr(url)}"
+              style="position:absolute;top:2px;right:2px;width:18px;height:18px;background:rgba(0,0,0,0.6);color:#fff;border:none;border-radius:50%;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;padding:0;"
+              aria-label="Slet">×</button>
+    </div>
+  `
+}
+
 function openTaskEditSheet(task) {
   const overlay  = _container?.querySelector('#task-edit-overlay')
   const body     = _container?.querySelector('#task-edit-body')
@@ -544,6 +557,19 @@ function openTaskEditSheet(task) {
       </div>
       <textarea id="task-edit-desc" class="task-edit-textarea"
                 placeholder="Instruktioner, mål, materialer…" rows="5">${escapeHtml(task.description || '')}</textarea>
+      <div class="task-edit-label" style="margin-top:14px;color:var(--text2);letter-spacing:0.06em;">REFERENCE BILLEDER</div>
+      <div id="ref-photo-strip"
+           style="display:flex;flex-direction:row;overflow-x:auto;gap:8px;min-height:68px;align-items:center;-webkit-overflow-scrolling:touch;padding:2px 0 4px;">
+        ${(task.referencePhotos || []).length > 0
+          ? (task.referencePhotos || []).map(url => buildEditRefThumb(url)).join('')
+          : `<div class="ref-strip-placeholder" style="color:var(--text2);font-size:11px;">Ingen billeder endnu</div>`
+        }
+      </div>
+      <button id="btn-add-ref-photo"
+              style="display:flex;align-items:center;justify-content:center;width:100%;height:44px;background:var(--surface2);border:1px dashed rgba(255,255,255,0.15);border-radius:var(--radius-sm);color:var(--text2);font-size:13px;font-family:var(--mono);cursor:pointer;">
+        + Tilføj billede
+      </button>
+      <input type="file" id="ref-photo-input" accept="image/*" style="display:none;">
       <div class="task-edit-actions">
         <button class="btn-cancel-task" id="task-edit-cancel">Annuller</button>
         <button class="btn-save-task" id="task-edit-save">Gem</button>
@@ -580,6 +606,52 @@ function openTaskEditSheet(task) {
     if (e.key === 'Enter') doSave()
     if (e.key === 'Escape') closeTaskEditSheet()
   })
+
+  // ── Reference photos ──────────────────────────────────────
+  const strip    = body.querySelector('#ref-photo-strip')
+  const addBtn   = body.querySelector('#btn-add-ref-photo')
+  const fileInput = body.querySelector('#ref-photo-input')
+
+  // Delete button — delegated on the strip
+  strip.addEventListener('click', async e => {
+    const delBtn = e.target.closest('.ref-del-btn')
+    if (!delBtn) return
+    const url = delBtn.dataset.url
+    try {
+      await removeReferencePhoto(task.id, url)
+      delBtn.closest('.ref-thumb-wrap')?.remove()
+      if (!strip.querySelector('img')) {
+        strip.innerHTML = `<div class="ref-strip-placeholder" style="color:var(--text2);font-size:11px;">Ingen billeder endnu</div>`
+      }
+    } catch {
+      showToast('Kunne ikke slette billede', true)
+    }
+  })
+
+  addBtn.addEventListener('click', () => fileInput.click())
+
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files[0]
+    if (!file) return
+    fileInput.value = ''
+
+    addBtn.textContent = 'Uploader...'
+    addBtn.disabled = true
+
+    try {
+      const url = await addReferencePhoto(task.id, file)
+      strip.querySelector('.ref-strip-placeholder')?.remove()
+      const wrap = document.createElement('div')
+      wrap.innerHTML = buildEditRefThumb(url)
+      strip.appendChild(wrap.firstElementChild)
+    } catch {
+      showToast('Kunne ikke uploade billede — prøv igen', true)
+    } finally {
+      addBtn.textContent = '+ Tilføj billede'
+      addBtn.disabled = false
+    }
+  })
+  // ─────────────────────────────────────────────────────────
 
   setTimeout(() => body.querySelector('#task-edit-name')?.focus(), 80)
 }
