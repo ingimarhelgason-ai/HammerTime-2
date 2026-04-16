@@ -168,13 +168,14 @@ function buildShell() {
             ${iconCamera()}
             Log foto
           </button>
-          <button class="btn-ghost btn-hero-note" id="btn-hero-note">
+          <button class="btn-hero-note" id="btn-hero-note">
             ${iconNote()}
-            Bare en note
+            <span class="btn-hero-note-label">Notér</span>
           </button>
           ${hasMic ? `
-          <button class="btn-ghost btn-hero-mic" id="btn-hero-mic" aria-label="Optag stemmenote">
+          <button class="btn-hero-mic" id="btn-hero-mic" aria-label="Optag stemmenote">
             ${iconMic()}
+            <span class="btn-hero-mic-label">Optag</span>
           </button>
           ` : ''}
         </div>
@@ -657,7 +658,7 @@ function iconCameraLg() {
 }
 
 function iconCamera() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18">
     <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
     <circle cx="12" cy="13" r="4"/>
   </svg>`
@@ -671,7 +672,7 @@ function iconNoteSmall() {
 }
 
 function iconNote() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16">
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18">
     <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
     <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
   </svg>`
@@ -694,7 +695,7 @@ function iconPlus() {
 }
 
 function iconMic() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20">
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18">
     <rect x="9" y="2" width="6" height="11" rx="3"/>
     <path d="M5 10a7 7 0 0014 0M12 19v3M8 22h8"/>
   </svg>`
