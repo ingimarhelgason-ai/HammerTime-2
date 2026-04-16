@@ -16,7 +16,17 @@ let _stopVoice           = null
 export function render(container) {
   container.innerHTML = buildShell()
 
-  container.querySelector('#btn-projects').addEventListener('click', () => window.navigate('projects'))
+  container.querySelector('#btn-kanban').addEventListener('click', () => {
+    const active = getActive()
+    if (!active?.projectId) { showToast(container, 'Vælg et projekt først'); return }
+    window.navigate('project-view', { projectId: active.projectId })
+  })
+
+  container.querySelector('#btn-feed-nav').addEventListener('click', () => {
+    const active = getActive()
+    if (!active?.projectId) { showToast(container, 'Vælg et projekt først'); return }
+    window.navigate('feed', { projectId: active.projectId })
+  })
 
   const banner = container.querySelector('#api-key-banner')
   if (banner) banner.addEventListener('click', () => window.navigate('settings'))
@@ -134,9 +144,14 @@ function buildShell() {
           <div class="subtitle">${formatDayFull()}</div>
         </div>
         <div class="top-bar-actions">
-          <button class="btn-icon" id="btn-projects" aria-label="Projekter">
-            ${iconFolder()}
-          </button>
+          <div class="home-topbar-icons">
+            <button class="btn-topbar-icon btn-topbar-kanban" id="btn-kanban" aria-label="Kanban">
+              ${iconKanban()}
+            </button>
+            <button class="btn-topbar-icon btn-topbar-feed" id="btn-feed-nav" aria-label="Feed">
+              ${iconFeedList()}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -644,9 +659,22 @@ function escapeAttr(str) {
 
 // ─── ICONS ──────────────────────────────────────────────────
 
-function iconFolder() {
-  return `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-    <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/>
+function iconKanban() {
+  return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3" width="5" height="14" rx="1"/>
+    <rect x="10" y="3" width="5" height="9" rx="1"/>
+    <rect x="17" y="3" width="4" height="11" rx="1"/>
+  </svg>`
+}
+
+function iconFeedList() {
+  return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="3" width="7" height="7" rx="1"/>
+    <line x1="13" y1="5" x2="21" y2="5"/>
+    <line x1="13" y1="9" x2="21" y2="9"/>
+    <rect x="3" y="14" width="7" height="7" rx="1"/>
+    <line x1="13" y1="16" x2="21" y2="16"/>
+    <line x1="13" y1="20" x2="21" y2="20"/>
   </svg>`
 }
 
