@@ -1,23 +1,24 @@
 import { getProject, subscribeToTasks, subscribeToLogs, updateTask, createTask, addTask, addLog, addReferencePhoto, removeReferencePhoto } from '../js/api.js'
 import { formatDateShort, formatTimestamp, relativeDate } from '../js/utils.js'
 import { getActive } from '../js/activeTask.js'
-import { startVoiceInput } from '../js/voice.js'
+import { startVoiceInput } from '../js/voice.js' // used by diktat FAB only
 import { interpretDiktat } from '../js/claude.js'
 
 // ─── STATE ──────────────────────────────────────────────────
 
-let _unsubTasks       = null
-let _unsubLogs        = null
-let _taskMap          = {}
-let _logFilter        = null
-let _allLogs          = []
-let _tasks            = []
-let _projectId        = null
-let _project          = null
-let _container        = null
-let _stopVoice        = null
-let _origConsoleLog   = null
-let _origConsoleError = null
+let _unsubTasks          = null
+let _unsubLogs           = null
+let _taskMap             = {}
+let _logFilter           = null
+let _allLogs             = []
+let _tasks               = []
+let _projectId           = null
+let _project             = null
+let _container           = null
+let _stopVoice           = null
+let _revokeRefPreviews   = null
+let _origConsoleLog      = null
+let _origConsoleError    = null
 
 // ─── COLUMN DEFINITIONS ─────────────────────────────────────
 
@@ -79,10 +80,10 @@ export async function render(container, params = {}) {
     if (e.target.id === 'feed-overlay') closeFeedSheet()
   })
 
-  // Task edit sheet
-  container.querySelector('#btn-task-edit-close').addEventListener('click', () => closeTaskEditSheet())
+  // Task sheet (create / edit)
+  container.querySelector('#btn-task-edit-close').addEventListener('click', () => closeTaskSheet())
   container.querySelector('#task-edit-overlay').addEventListener('click', e => {
-    if (e.target.id === 'task-edit-overlay') closeTaskEditSheet()
+    if (e.target.id === 'task-edit-overlay') closeTaskSheet()
   })
 
   // Move sheet
@@ -213,6 +214,7 @@ export function destroy() {
   if (_unsubTasks) { _unsubTasks(); _unsubTasks = null }
   if (_unsubLogs)  { _unsubLogs();  _unsubLogs  = null }
   _stopVoice?.(); _stopVoice = null
+  _revokeRefPreviews?.(); _revokeRefPreviews = null
   if (_origConsoleLog)   { console.log   = _origConsoleLog;   _origConsoleLog   = null }
   if (_origConsoleError) { console.error = _origConsoleError; _origConsoleError = null }
   _taskMap = {}; _logFilter = null; _allLogs = []; _tasks = []
@@ -246,12 +248,12 @@ function buildShell() {
 
       <div id="toast-area"></div>
 
-      <!-- Task edit sheet -->
+      <!-- Task sheet (create / edit) -->
       <div class="sheet-overlay" id="task-edit-overlay">
         <div class="sheet">
           <div class="sheet-handle"></div>
           <div class="sheet-header">
-            <span class="sheet-title">Rediger opgave</span>
+            <span class="sheet-title"></span>
             <button class="btn-icon sheet-close" id="btn-task-edit-close">${iconClose()}</button>
           </div>
           <div class="sheet-body" id="task-edit-body"></div>
@@ -355,41 +357,17 @@ function renderKanban() {
     return buildColHtml(col, colTasks, active)
   }).join('')
 
-  // Add task buttons
+  // Add task button → open task sheet (create mode)
   board.querySelectorAll('.kanban-add-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const col = btn.closest('.kanban-col')
-      btn.style.display = 'none'
-      col.querySelector('.kanban-add-form').style.display = 'flex'
-      col.querySelector('.kanban-add-input').focus()
-    })
+    btn.addEventListener('click', () => openTaskSheet(null, btn.dataset.colStatus))
   })
 
-  board.querySelectorAll('.kanban-add-cancel').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const col = btn.closest('.kanban-col')
-      col.querySelector('.kanban-add-form').style.display = 'none'
-      col.querySelector('.kanban-add-btn').style.display = ''
-    })
-  })
-
-  board.querySelectorAll('.kanban-add-save').forEach(btn => {
-    btn.addEventListener('click', () => doAddTask(btn))
-  })
-
-  board.querySelectorAll('.kanban-add-input').forEach(input => {
-    input.addEventListener('keydown', e => {
-      if (e.key === 'Enter') doAddTask(input.closest('.kanban-add-form').querySelector('.kanban-add-save'))
-      if (e.key === 'Escape') input.closest('.kanban-col').querySelector('.kanban-add-cancel').click()
-    })
-  })
-
-  // Edit button → edit sheet (stopPropagation prevents move sheet)
+  // Edit button → task sheet (edit mode) — stopPropagation prevents move sheet
   board.querySelectorAll('.kanban-card-edit').forEach(btn => {
     btn.addEventListener('click', e => {
       e.stopPropagation()
       const task = _tasks.find(t => t.id === btn.dataset.taskId)
-      if (task) openTaskEditSheet(task)
+      if (task) openTaskSheet(task, null)
     })
   })
 
@@ -400,29 +378,6 @@ function renderKanban() {
       if (task) openMoveSheet(task)
     })
   })
-}
-
-async function doAddTask(saveBtn) {
-  const col    = saveBtn.closest('.kanban-col')
-  const input  = col.querySelector('.kanban-add-input')
-  const name   = input.value.trim()
-  if (!name) { input.focus(); return }
-  const status = col.dataset.status
-
-  saveBtn.disabled = true
-  try {
-    const taskId = await createTask(_projectId, name)
-    if (status !== 'not started') {
-      await updateTask(taskId, { status })
-    }
-    input.value = ''
-    col.querySelector('.kanban-add-form').style.display = 'none'
-    col.querySelector('.kanban-add-btn').style.display = ''
-  } catch {
-    showToast('Fejl ved oprettelse', true)
-  } finally {
-    saveBtn.disabled = false
-  }
 }
 
 function buildColHtml(col, colTasks, active) {
@@ -436,14 +391,7 @@ function buildColHtml(col, colTasks, active) {
         ${colTasks.map(t => buildKanbanCard(t, active)).join('')}
       </div>
       <div class="kanban-col-footer">
-        <button class="kanban-add-btn">${iconPlus()} Tilføj</button>
-        <div class="kanban-add-form" style="display:none;">
-          <input class="kanban-add-input" type="text" placeholder="Opgavenavn" maxlength="200" autocomplete="off">
-          <div class="kanban-add-actions">
-            <button class="kanban-add-cancel">Annuller</button>
-            <button class="kanban-add-save">Gem</button>
-          </div>
-        </div>
+        <button class="kanban-add-btn" data-col-status="${escapeAttr(col.status)}">${iconPlus()} Tilføj</button>
       </div>
     </div>
   `
@@ -452,17 +400,18 @@ function buildColHtml(col, colTasks, active) {
 function buildKanbanCard(task, active) {
   const isActive   = active && active.taskId === task.id
   const desc       = task.description || ''
-  const descPreview = desc.length > 70 ? desc.slice(0, 70) + '…' : desc
+  const photoCount = (task.referencePhotos || []).length
 
   return `
     <div class="kanban-card${isActive ? ' active-task' : ''}"
          data-task-id="${escapeAttr(task.id)}">
       <div class="kanban-card-content">
         <div class="kanban-card-name">${escapeHtml(task.name || 'Unavngivet')}</div>
-        ${descPreview ? `<div class="kanban-card-desc">${escapeHtml(descPreview)}</div>` : ''}
+        ${desc ? `<div class="kanban-card-desc">${escapeHtml(desc)}</div>` : ''}
+        ${photoCount > 0 ? `<div class="kanban-card-photo-badge">${iconCameraSmall()} ${photoCount} ${photoCount === 1 ? 'billede' : 'billeder'}</div>` : ''}
       </div>
       <button class="kanban-card-edit" data-task-id="${escapeAttr(task.id)}" aria-label="Rediger">
-        ${iconEdit()}
+        ${iconPencil()}
       </button>
     </div>
   `
@@ -521,179 +470,181 @@ function showNextTaskNotice() {
   _container?.querySelector('#kanban-outer')?.insertAdjacentElement('beforebegin', notice)
 }
 
-// ─── TASK EDIT SHEET ────────────────────────────────────────
+// ─── TASK SHEET (unified create / edit) ─────────────────────
 
-function buildEditRefThumb(url) {
+function buildRefThumb(url) {
   return `
-    <div class="ref-thumb-wrap" style="position:relative;flex-shrink:0;">
-      <img src="${escapeAttr(url)}"
-           style="width:64px;height:64px;border-radius:var(--radius-sm);object-fit:cover;display:block;"
-           alt="">
-      <button class="ref-del-btn" data-url="${escapeAttr(url)}"
-              style="position:absolute;top:2px;right:2px;width:18px;height:18px;background:rgba(0,0,0,0.6);color:#fff;border:none;border-radius:50%;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;padding:0;"
-              aria-label="Slet">×</button>
+    <div class="ref-thumb-wrap">
+      <img src="${escapeAttr(url)}" class="task-sheet-ref-thumb" alt="">
+      <button class="ref-del-btn" data-url="${escapeAttr(url)}" aria-label="Slet">×</button>
     </div>
   `
 }
 
-function openTaskEditSheet(task) {
+function buildRefThumbPreview(blobUrl) {
+  return `
+    <div class="ref-thumb-wrap">
+      <img src="${escapeAttr(blobUrl)}" class="task-sheet-ref-thumb" alt="">
+    </div>
+  `
+}
+
+function openTaskSheet(task, colStatus) {
+  const isCreate = task === null
   const overlay  = _container?.querySelector('#task-edit-overlay')
   const body     = _container?.querySelector('#task-edit-body')
-  if (!overlay) return
+  const titleEl  = overlay?.querySelector('.sheet-title')
+  if (!overlay || !body) return
 
-  const hasMic = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+  if (titleEl) titleEl.textContent = isCreate ? 'Ny opgave' : 'Rediger opgave'
+
+  const existingPhotos = task?.referencePhotos || []
 
   body.innerHTML = `
-    <div class="task-edit-form">
-      <div class="task-edit-label-row">
-        <div class="task-edit-label">OPGAVENAVN</div>
-        ${hasMic ? `<button class="btn-ghost btn-hero-mic" id="task-name-mic" aria-label="Dikter opgavenavn">${iconMic()}</button>` : ''}
+    <div class="task-sheet-form">
+      <input id="task-sheet-name" class="task-sheet-name-input"
+             type="text" placeholder="Hvad skal laves?"
+             value="${escapeAttr(task?.name || '')}"
+             maxlength="200" autocomplete="off">
+      <div class="task-sheet-label">INSTRUKTIONER</div>
+      <textarea id="task-sheet-desc" class="task-sheet-desc-textarea"
+                placeholder="Instruktioner, mål, materialer…">${escapeHtml(task?.description || '')}</textarea>
+      <div class="task-sheet-label">REFERENCE BILLEDER</div>
+      <div id="ref-photo-strip" class="task-sheet-ref-strip">
+        ${existingPhotos.map(url => buildRefThumb(url)).join('')}
+        <button id="btn-add-ref-photo" class="task-sheet-add-photo" type="button">
+          ${iconCameraSmall()}
+          <span>Tilføj</span>
+        </button>
       </div>
-      <input id="task-edit-name" class="task-edit-input" type="text"
-             value="${escapeAttr(task.name || '')}" maxlength="200" autocomplete="off">
-      <div class="task-edit-label-row" style="margin-top:14px;">
-        <div class="task-edit-label">BESKRIVELSE</div>
-        ${hasMic ? `<button class="btn-ghost btn-hero-mic" id="task-desc-mic" aria-label="Dikter beskrivelse">${iconMic()}</button>` : ''}
-      </div>
-      <textarea id="task-edit-desc" class="task-edit-textarea"
-                placeholder="Instruktioner, mål, materialer…" rows="5">${escapeHtml(task.description || '')}</textarea>
-      <div class="task-edit-label" style="margin-top:14px;color:var(--text2);letter-spacing:0.06em;">REFERENCE BILLEDER</div>
-      <div id="ref-photo-strip"
-           style="display:flex;flex-direction:row;overflow-x:auto;gap:8px;min-height:68px;align-items:center;-webkit-overflow-scrolling:touch;padding:2px 0 4px;">
-        ${(task.referencePhotos || []).length > 0
-          ? (task.referencePhotos || []).map(url => buildEditRefThumb(url)).join('')
-          : `<div class="ref-strip-placeholder" style="color:var(--text2);font-size:11px;">Ingen billeder endnu</div>`
-        }
-      </div>
-      <button id="btn-add-ref-photo"
-              style="display:flex;align-items:center;justify-content:center;width:100%;height:44px;background:var(--surface2);border:1px dashed rgba(255,255,255,0.15);border-radius:var(--radius-sm);color:var(--text2);font-size:13px;font-family:var(--mono);cursor:pointer;">
-        + Tilføj billede
-      </button>
       <input type="file" id="ref-photo-input" accept="image/*" multiple style="display:none;">
-      <div class="task-edit-actions">
-        <button class="btn-cancel-task" id="task-edit-cancel">Annuller</button>
-        <button class="btn-save-task" id="task-edit-save">Gem</button>
-      </div>
+      <button id="task-sheet-save" class="task-sheet-save-btn">Gem opgave</button>
     </div>
   `
 
   overlay.classList.add('open')
 
-  if (hasMic) {
-    attachHoldMic(body.querySelector('#task-name-mic'), () => body.querySelector('#task-edit-name'), body)
-    attachHoldMic(body.querySelector('#task-desc-mic'), () => body.querySelector('#task-edit-desc'), body)
-  }
-
-  body.querySelector('#task-edit-cancel').addEventListener('click', () => closeTaskEditSheet())
-
-  const doSave = async () => {
-    const name = body.querySelector('#task-edit-name').value.trim()
-    const desc = body.querySelector('#task-edit-desc').value.trim()
-    if (!name) { body.querySelector('#task-edit-name').focus(); return }
-    const saveBtn = body.querySelector('#task-edit-save')
-    saveBtn.disabled = true; saveBtn.textContent = '...'
-    try {
-      await updateTask(task.id, { name, description: desc || null })
-      closeTaskEditSheet()
-    } catch {
-      showToast('Fejl ved gem', true)
-      saveBtn.disabled = false; saveBtn.textContent = 'Gem'
-    }
-  }
-
-  body.querySelector('#task-edit-save').addEventListener('click', doSave)
-  body.querySelector('#task-edit-name').addEventListener('keydown', e => {
-    if (e.key === 'Enter') doSave()
-    if (e.key === 'Escape') closeTaskEditSheet()
-  })
-
-  // ── Reference photos ──────────────────────────────────────
-  const strip    = body.querySelector('#ref-photo-strip')
-  const addBtn   = body.querySelector('#btn-add-ref-photo')
+  const nameInput = body.querySelector('#task-sheet-name')
+  const descInput = body.querySelector('#task-sheet-desc')
+  const saveBtn   = body.querySelector('#task-sheet-save')
+  const strip     = body.querySelector('#ref-photo-strip')
+  const addBtn    = body.querySelector('#btn-add-ref-photo')
   const fileInput = body.querySelector('#ref-photo-input')
 
-  // Delete button — delegated on the strip
-  strip.addEventListener('click', async e => {
-    const delBtn = e.target.closest('.ref-del-btn')
-    if (!delBtn) return
-    const url = delBtn.dataset.url
-    try {
-      await removeReferencePhoto(task.id, url)
-      delBtn.closest('.ref-thumb-wrap')?.remove()
-      if (!strip.querySelector('img')) {
-        strip.innerHTML = `<div class="ref-strip-placeholder" style="color:var(--text2);font-size:11px;">Ingen billeder endnu</div>`
-      }
-    } catch {
-      showToast('Kunne ikke slette billede', true)
-    }
-  })
+  if (isCreate) {
+    // ── Create mode: stage files, upload after task is created ──
+    const pendingFiles = []
+    const blobUrls     = []
+    _revokeRefPreviews = () => { blobUrls.forEach(u => URL.revokeObjectURL(u)); blobUrls.length = 0 }
 
-  addBtn.addEventListener('click', () => fileInput.click())
-
-  fileInput.addEventListener('change', async () => {
-    const files = Array.from(fileInput.files)
-    if (!files.length) return
-    fileInput.value = ''
-
-    addBtn.textContent = 'Uploader...'
-    addBtn.disabled = true
-
-    try {
-      const urls = await Promise.all(files.map(f => addReferencePhoto(task.id, f)))
-      strip.querySelector('.ref-strip-placeholder')?.remove()
-      for (const url of urls) {
+    addBtn.addEventListener('click', () => fileInput.click())
+    fileInput.addEventListener('change', () => {
+      const files = Array.from(fileInput.files)
+      if (!files.length) return
+      fileInput.value = ''
+      for (const file of files) {
+        pendingFiles.push(file)
+        const url = URL.createObjectURL(file)
+        blobUrls.push(url)
         const wrap = document.createElement('div')
-        wrap.innerHTML = buildEditRefThumb(url)
-        strip.appendChild(wrap.firstElementChild)
+        wrap.innerHTML = buildRefThumbPreview(url)
+        strip.insertBefore(wrap.firstElementChild, addBtn)
       }
-    } catch {
-      showToast('Nogle billeder kunne ikke uploades — prøv igen', true)
-    } finally {
-      addBtn.textContent = '+ Tilføj billede'
-      addBtn.disabled = false
-    }
-  })
-  // ─────────────────────────────────────────────────────────
-
-  setTimeout(() => body.querySelector('#task-edit-name')?.focus(), 80)
-}
-
-function closeTaskEditSheet() {
-  _stopVoice?.(); _stopVoice = null
-  _container?.querySelector('#task-edit-overlay')?.classList.remove('open')
-}
-
-function attachHoldMic(btn, getTarget, body) {
-  const doStop = () => {
-    _stopVoice?.(); _stopVoice = null
-    btn.classList.remove('mic-recording')
-  }
-  btn.addEventListener('pointerdown', e => {
-    e.preventDefault()
-    btn.setPointerCapture(e.pointerId)
-    // stop any other ongoing recording first
-    _stopVoice?.(); _stopVoice = null
-    body.querySelectorAll('.mic-recording').forEach(el => el.classList.remove('mic-recording'))
-    const voice = startVoiceInput({
-      lang:    'da-DK',
-      onStart: () => btn.classList.add('mic-recording'),
-      onEnd:   () => { btn.classList.remove('mic-recording'); _stopVoice = null },
-      onResult: transcript => {
-        const target = getTarget()
-        if (!target) return
-        target.value = target.value ? target.value + ' ' + transcript : transcript
-      },
-      onError: code => {
-        btn.classList.remove('mic-recording'); _stopVoice = null
-        if (code === 'not-supported') showToast('Stemmeindtastning ikke understøttet i denne browser', true)
-        else showToast('Kunne ikke optage — prøv igen', true)
-      },
     })
-    _stopVoice = voice.stop
-  })
-  btn.addEventListener('pointerup',          doStop)
-  btn.addEventListener('pointercancel',      doStop)
-  btn.addEventListener('lostpointercapture', doStop)
+
+    const doSave = async () => {
+      const name = nameInput.value.trim()
+      const desc = descInput.value.trim()
+      if (!name) { nameInput.focus(); nameInput.style.borderColor = 'var(--danger)'; return }
+      saveBtn.disabled = true; saveBtn.textContent = '…'
+      try {
+        const taskId = await createTask(_projectId, name)
+        const updates = {}
+        if (desc) updates.description = desc
+        if (colStatus && colStatus !== 'not started') updates.status = colStatus
+        if (Object.keys(updates).length > 0) await updateTask(taskId, updates)
+        if (pendingFiles.length > 0) {
+          await Promise.all(pendingFiles.map(f => addReferencePhoto(taskId, f)))
+        }
+        closeTaskSheet()
+      } catch {
+        showToast('Fejl ved oprettelse', true)
+        saveBtn.disabled = false; saveBtn.textContent = 'Gem opgave'
+      }
+    }
+
+    saveBtn.addEventListener('click', doSave)
+    nameInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') doSave()
+      if (e.key === 'Escape') closeTaskSheet()
+    })
+
+  } else {
+    // ── Edit mode: photo changes are immediate ────────────────
+    _revokeRefPreviews = null
+
+    strip.addEventListener('click', async e => {
+      const delBtn = e.target.closest('.ref-del-btn')
+      if (!delBtn) return
+      const url = delBtn.dataset.url
+      try {
+        await removeReferencePhoto(task.id, url)
+        delBtn.closest('.ref-thumb-wrap')?.remove()
+      } catch {
+        showToast('Kunne ikke slette billede', true)
+      }
+    })
+
+    addBtn.addEventListener('click', () => fileInput.click())
+    fileInput.addEventListener('change', async () => {
+      const files = Array.from(fileInput.files)
+      if (!files.length) return
+      fileInput.value = ''
+      const origHtml = addBtn.innerHTML
+      addBtn.innerHTML = `<span class="spinner" style="width:16px;height:16px;border-width:2px;"></span>`
+      addBtn.disabled = true
+      try {
+        const urls = await Promise.all(files.map(f => addReferencePhoto(task.id, f)))
+        for (const url of urls) {
+          const wrap = document.createElement('div')
+          wrap.innerHTML = buildRefThumb(url)
+          strip.insertBefore(wrap.firstElementChild, addBtn)
+        }
+      } catch {
+        showToast('Nogle billeder kunne ikke uploades — prøv igen', true)
+      } finally {
+        addBtn.innerHTML = origHtml
+        addBtn.disabled = false
+      }
+    })
+
+    const doSave = async () => {
+      const name = nameInput.value.trim()
+      const desc = descInput.value.trim()
+      if (!name) { nameInput.focus(); nameInput.style.borderColor = 'var(--danger)'; return }
+      saveBtn.disabled = true; saveBtn.textContent = '…'
+      try {
+        await updateTask(task.id, { name, description: desc || null })
+        closeTaskSheet()
+      } catch {
+        showToast('Fejl ved gem', true)
+        saveBtn.disabled = false; saveBtn.textContent = 'Gem opgave'
+      }
+    }
+
+    saveBtn.addEventListener('click', doSave)
+    nameInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') doSave()
+      if (e.key === 'Escape') closeTaskSheet()
+    })
+  }
+
+  setTimeout(() => nameInput?.focus(), 80)
+}
+
+function closeTaskSheet() {
+  _revokeRefPreviews?.(); _revokeRefPreviews = null
+  _container?.querySelector('#task-edit-overlay')?.classList.remove('open')
 }
 
 // ─── DIKTAT REVIEW SHEET ────────────────────────────────────
@@ -954,11 +905,14 @@ function iconClose() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6L6 18M6 6l12 12"/></svg>`
 }
 
-function iconEdit() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="15" height="15">
-    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+function iconPencil() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="15" height="15">
+    <path d="M17 3a2.828 2.828 0 014 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
   </svg>`
+}
+
+function iconCameraSmall() {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>`
 }
 
 function iconPlus() {
@@ -973,9 +927,3 @@ function iconCheck() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><path d="M20 6L9 17l-5-5"/></svg>`
 }
 
-function iconMic() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15">
-    <rect x="9" y="2" width="6" height="11" rx="3"/>
-    <path d="M5 10a7 7 0 0014 0M12 19v3M8 22h8"/>
-  </svg>`
-}
