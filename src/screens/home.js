@@ -196,18 +196,13 @@ function renderStatusCard(container) {
           <div class="status-row-chevron">${iconChevronRight()}</div>
         </button>
         ${hasTask ? `
-        <div class="status-task-wrapper">
-          <button class="status-row status-row-task" id="btn-pick-task">
-            <div class="status-row-inner">
-              <div class="status-row-label">OPGAVE</div>
-              <div class="status-row-value">${escapeHtml(active.taskName || 'Unavngivet')}</div>
-            </div>
-            <div class="status-row-chevron">${iconChevronRight()}</div>
-          </button>
-          <button class="status-task-goto-btn" id="btn-goto-task" aria-label="Gå til opgave">
-            ${iconArrowRight()}
-          </button>
-        </div>
+        <button class="status-row status-row-task" id="btn-pick-task">
+          <div class="status-row-inner">
+            <div class="status-row-label">OPGAVE</div>
+            <div class="status-row-value">${escapeHtml(active.taskName || 'Unavngivet')}</div>
+          </div>
+          <div class="status-row-chevron">${iconChevronRight()}</div>
+        </button>
         ` : `
         <button class="status-row" id="btn-pick-task">
           <div class="status-row-inner">
@@ -223,12 +218,6 @@ function renderStatusCard(container) {
 
   area.querySelector('#btn-pick-project').addEventListener('click', () => openProjectPicker(container))
   area.querySelector('#btn-pick-task').addEventListener('click', () => openTaskPicker(container, active.projectId))
-
-  if (hasTask) {
-    area.querySelector('#btn-goto-task').addEventListener('click', () => {
-      window.navigate('project-view', { projectId: active.projectId })
-    })
-  }
 
   refreshTaskFeed(container, active)
 }
@@ -769,10 +758,6 @@ function iconChevronRight() {
 
 function iconClose() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 6L6 18M6 6l12 12"/></svg>`
-}
-
-function iconArrowRight() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`
 }
 
 function iconPlus() {
