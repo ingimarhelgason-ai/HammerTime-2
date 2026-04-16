@@ -3406,6 +3406,79 @@ html, body {
   color: var(--text);
 }
 
+/* ─── FEED PROJECT SELECTOR ─── */
+.feed-project-selector {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+  margin: 12px 16px 0;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.12s;
+}
+
+.feed-project-selector:active {
+  background: var(--surface2);
+}
+
+.feed-project-selector-label {
+  font-size: 10px;
+  font-family: var(--mono);
+  color: var(--text2);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+
+.feed-project-selector-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.feed-project-selector-value {
+  font-size: 13px;
+  color: var(--text);
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.feed-project-selector-chevron {
+  font-size: 18px;
+  color: var(--text2);
+  line-height: 1;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.feed-proj-option {
+  font-size: 14px;
+  color: var(--text);
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.12s;
+}
+
+.feed-proj-option:last-child {
+  border-bottom: none;
+}
+
+.feed-proj-option:active {
+  background: var(--surface2);
+}
+
+.feed-proj-option.selected {
+  color: var(--accent);
+}
+
 /* ─── FEED SCREEN ─── */
 .feed-grid {
   display: grid;

@@ -41,6 +41,15 @@ export function subscribeToProjects(callback) {
 }
 
 /**
+ * Get all projects, ordered by creation date (newest first).
+ */
+export async function getProjects() {
+  const q = query(collection(db, 'projects'), orderBy('createdAt', 'desc'))
+  const snap = await getDocs(q)
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+}
+
+/**
  * Get a single project by ID.
  */
 export async function getProject(projectId) {
