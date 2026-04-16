@@ -569,7 +569,7 @@ function openTaskEditSheet(task) {
               style="display:flex;align-items:center;justify-content:center;width:100%;height:44px;background:var(--surface2);border:1px dashed rgba(255,255,255,0.15);border-radius:var(--radius-sm);color:var(--text2);font-size:13px;font-family:var(--mono);cursor:pointer;">
         + Tilføj billede
       </button>
-      <input type="file" id="ref-photo-input" accept="image/*" style="display:none;">
+      <input type="file" id="ref-photo-input" accept="image/*" multiple style="display:none;">
       <div class="task-edit-actions">
         <button class="btn-cancel-task" id="task-edit-cancel">Annuller</button>
         <button class="btn-save-task" id="task-edit-save">Gem</button>
@@ -631,21 +631,23 @@ function openTaskEditSheet(task) {
   addBtn.addEventListener('click', () => fileInput.click())
 
   fileInput.addEventListener('change', async () => {
-    const file = fileInput.files[0]
-    if (!file) return
+    const files = Array.from(fileInput.files)
+    if (!files.length) return
     fileInput.value = ''
 
     addBtn.textContent = 'Uploader...'
     addBtn.disabled = true
 
     try {
-      const url = await addReferencePhoto(task.id, file)
+      const urls = await Promise.all(files.map(f => addReferencePhoto(task.id, f)))
       strip.querySelector('.ref-strip-placeholder')?.remove()
-      const wrap = document.createElement('div')
-      wrap.innerHTML = buildEditRefThumb(url)
-      strip.appendChild(wrap.firstElementChild)
+      for (const url of urls) {
+        const wrap = document.createElement('div')
+        wrap.innerHTML = buildEditRefThumb(url)
+        strip.appendChild(wrap.firstElementChild)
+      }
     } catch {
-      showToast('Kunne ikke uploade billede — prøv igen', true)
+      showToast('Nogle billeder kunne ikke uploades — prøv igen', true)
     } finally {
       addBtn.textContent = '+ Tilføj billede'
       addBtn.disabled = false

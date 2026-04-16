@@ -1,16 +1,15 @@
-import { subscribeToProjects, getTasks, getTask, createTask, updateTask, subscribeToTaskLogs, addLog } from '../js/api.js'
-import { formatDayFull, formatTimestamp, relativeDate } from '../js/utils.js'
+import { subscribeToProjects, getTasks, getTask, createTask, updateTask, subscribeToTaskLogs, addLog, uploadPhoto } from '../js/api.js'
+import { formatDayFull, formatTimestamp, relativeDate, compressImage } from '../js/utils.js'
 import { getApiKey } from '../js/claude.js'
 import { getActive, setActive, clearActive } from '../js/activeTask.js'
-import { startVoiceInput } from '../js/voice.js'
 
-let _unsubProjects       = null
-let _unsubTaskLogs       = null
-let _activeTaskIdForFeed = null
-let _activeTaskDesc      = null
-let _activeTaskRefPhotos = null
-let _projects            = []
-let _stopVoice           = null
+let _unsubProjects        = null
+let _unsubTaskLogs        = null
+let _activeTaskIdForFeed  = null
+let _activeTaskDesc       = null
+let _activeTaskRefPhotos  = null
+let _projects             = []
+let _revokeCaptionBlob    = null
 
 // ─── LIFECYCLE ──────────────────────────────────────────────
 
@@ -48,75 +47,20 @@ export function render(container) {
   })
 
   container.querySelector('#btn-hero-log').addEventListener('click', () => {
-    const active = getActive()
-    window.navigate('log', {
-      projectId:  active?.projectId || null,
-      taskId:     active?.taskId    || null,
-      taskName:   active?.taskName  || null,
-      returnTo:   'home',
-      autoCamera: true
-    })
+    container.querySelector('#home-photo-input').click()
   })
 
-  container.querySelector('#btn-hero-note').addEventListener('click', () => {
-    const active = getActive()
-    window.navigate('log', {
-      projectId: active?.projectId || null,
-      taskId:    active?.taskId    || null,
-      taskName:  active?.taskName  || null,
-      returnTo:  'home',
-      noteOnly:  true
-    })
-  })
-
-  const micBtn = container.querySelector('#btn-hero-mic')
-  if (micBtn) {
-    const doStop = () => {
-      _stopVoice?.()
-      _stopVoice = null
-      micBtn.classList.remove('mic-recording')
+  container.querySelector('#home-photo-input').addEventListener('change', async e => {
+    const file = e.target.files[0]
+    if (!file) return
+    e.target.value = ''
+    try {
+      const blob = await compressImage(file)
+      openCaptionSheet(container, blob, file.name)
+    } catch {
+      showToast(container, 'Kunne ikke læse billedet — prøv igen', true)
     }
-
-    micBtn.addEventListener('pointerdown', e => {
-      e.preventDefault()
-      micBtn.setPointerCapture(e.pointerId)
-
-      const active = getActive()
-      const voice  = startVoiceInput({
-        lang:     'da-DK',
-        onStart:  () => micBtn.classList.add('mic-recording'),
-        onEnd:    () => { micBtn.classList.remove('mic-recording'); _stopVoice = null },
-        onResult: async transcript => {
-          try {
-            await addLog({
-              projectId: active?.projectId || null,
-              taskId:    active?.taskId    || null,
-              type:      'note',
-              note:      transcript,
-              photoUrl:  null,
-              location:  null,
-            })
-          } catch {
-            showToast(container, 'Kunne ikke gemme note', true)
-          }
-        },
-        onError: code => {
-          micBtn.classList.remove('mic-recording')
-          _stopVoice = null
-          if (code === 'not-supported') {
-            showToast(container, 'Stemmeindtastning ikke understøttet i denne browser', true)
-          } else {
-            showToast(container, 'Kunne ikke optage — prøv igen', true)
-          }
-        },
-      })
-      _stopVoice = voice.stop
-    })
-
-    micBtn.addEventListener('pointerup',          doStop)
-    micBtn.addEventListener('pointercancel',      doStop)
-    micBtn.addEventListener('lostpointercapture', doStop)
-  }
+  })
 
   _unsubProjects = subscribeToProjects(projects => {
     _projects = projects
@@ -134,7 +78,7 @@ export function render(container) {
 export function destroy() {
   if (_unsubProjects) { _unsubProjects(); _unsubProjects = null }
   if (_unsubTaskLogs) { _unsubTaskLogs(); _unsubTaskLogs = null }
-  _stopVoice?.(); _stopVoice = null
+  _revokeCaptionBlob?.(); _revokeCaptionBlob = null
   _activeTaskIdForFeed = null
   _activeTaskDesc = null
   _activeTaskRefPhotos = null
@@ -144,7 +88,6 @@ export function destroy() {
 // ─── SHELL ──────────────────────────────────────────────────
 
 function buildShell() {
-  const hasMic = !!(window.SpeechRecognition || window.webkitSpeechRecognition)
   return `
     <div class="screen" id="home-screen">
       <div class="top-bar">
@@ -192,17 +135,8 @@ function buildShell() {
             ${iconCamera()}
             Log foto
           </button>
-          <button class="btn-hero-note" id="btn-hero-note">
-            ${iconNote()}
-            <span class="btn-hero-note-label">Notér</span>
-          </button>
-          ${hasMic ? `
-          <button class="btn-hero-mic" id="btn-hero-mic" aria-label="Optag stemmenote">
-            ${iconMic()}
-            <span class="btn-hero-mic-label">Optag</span>
-          </button>
-          ` : ''}
         </div>
+        <input type="file" id="home-photo-input" accept="image/*" capture="environment" style="display:none;">
 
         <div id="home-task-feed"></div>
 
@@ -619,6 +553,79 @@ function openDescViewSheet(container) {
   `
 }
 
+// ─── CAPTION SHEET ──────────────────────────────────────────
+
+function openCaptionSheet(container, blob, filename) {
+  const previewUrl = URL.createObjectURL(blob)
+
+  const revoke = () => {
+    URL.revokeObjectURL(previewUrl)
+    _revokeCaptionBlob = null
+  }
+  _revokeCaptionBlob = revoke
+
+  const body = openSheet(container, 'Log foto')
+  if (!body) { revoke(); return }
+
+  // Override sheet close handlers to also revoke blob URL
+  const overlay = container.querySelector('#sheet-overlay')
+  overlay.onclick = e => { if (e.target === overlay) { revoke(); closeSheet(container) } }
+  container.querySelector('#btn-sheet-close').onclick = () => { revoke(); closeSheet(container) }
+
+  body.innerHTML = `
+    <img src="${escapeAttr(previewUrl)}"
+         style="width:100%;max-height:200px;object-fit:cover;display:block;" alt="">
+    <div style="padding:12px 16px 0;">
+      <textarea id="caption-note"
+                placeholder="Tilføj en note... (valgfrit)"
+                style="width:100%;min-height:80px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:14px;padding:10px 12px;font-family:var(--mono);resize:none;outline:none;display:block;-webkit-appearance:none;transition:border-color 0.15s;"
+      ></textarea>
+      <button id="btn-gem-log"
+              style="width:100%;height:52px;background:var(--accent);color:#111;font-size:14px;font-weight:600;border:none;border-radius:var(--radius);cursor:pointer;margin-top:12px;display:block;font-family:inherit;">
+        Gem log
+      </button>
+      <div style="text-align:center;margin-top:10px;padding-bottom:4px;">
+        <button id="btn-caption-cancel"
+                style="background:none;border:none;color:var(--text2);font-size:13px;cursor:pointer;padding:8px;">
+          Annuller
+        </button>
+      </div>
+    </div>
+  `
+
+  body.querySelector('#btn-caption-cancel').addEventListener('click', () => {
+    revoke()
+    closeSheet(container)
+  })
+
+  body.querySelector('#btn-gem-log').addEventListener('click', async () => {
+    const note   = body.querySelector('#caption-note').value.trim() || null
+    const gemBtn = body.querySelector('#btn-gem-log')
+    gemBtn.disabled    = true
+    gemBtn.textContent = 'Gemmer...'
+
+    try {
+      const active   = getActive()
+      const photoUrl = await uploadPhoto(active?.projectId || null, blob, filename)
+      await addLog({
+        projectId: active?.projectId || null,
+        taskId:    active?.taskId    || null,
+        type:      'photo',
+        photoUrl,
+        note,
+        location:  null,
+      })
+      revoke()
+      closeSheet(container)
+      showToast(container, 'Foto gemt')
+    } catch {
+      showToast(container, 'Fejl ved upload — prøv igen', true)
+      gemBtn.disabled    = false
+      gemBtn.textContent = 'Gem log'
+    }
+  })
+}
+
 // ─── LIGHTBOX ────────────────────────────────────────────────
 
 function openLightbox(container, url) {
@@ -742,29 +749,15 @@ function iconFeedList() {
   </svg>`
 }
 
-function iconCameraLg() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="36" height="36">
-    <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
-    <circle cx="12" cy="13" r="4"/>
-  </svg>`
-}
-
 function iconCamera() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18">
-    <path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/>
+  return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
     <circle cx="12" cy="13" r="4"/>
   </svg>`
 }
 
 function iconNoteSmall() {
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="16" height="16">
-    <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
-    <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
-  </svg>`
-}
-
-function iconNote() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18">
     <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
     <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
   </svg>`
@@ -784,11 +777,4 @@ function iconArrowRight() {
 
 function iconPlus() {
   return `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>`
-}
-
-function iconMic() {
-  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="18" height="18">
-    <rect x="9" y="2" width="6" height="11" rx="3"/>
-    <path d="M5 10a7 7 0 0014 0M12 19v3M8 22h8"/>
-  </svg>`
 }

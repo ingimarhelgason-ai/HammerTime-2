@@ -252,6 +252,19 @@ export async function removeReferencePhoto(taskId, url) {
 }
 
 /**
+ * Upload a pre-compressed image blob to Storage at photos/{projectId}/{timestamp}_{filename}.
+ * Returns the download URL.
+ */
+export async function uploadPhoto(projectId, blob, filename) {
+  const safeProjId = projectId || 'untagged'
+  const safename   = filename.replace(/[^a-zA-Z0-9._-]/g, '_')
+  const path       = `photos/${safeProjId}/${Date.now()}_${safename}`
+  const sRef       = storageRef(storage, path)
+  await uploadBytes(sRef, blob)
+  return getDownloadURL(sRef)
+}
+
+/**
  * Add a log entry.
  */
 export async function addLog(data) {
